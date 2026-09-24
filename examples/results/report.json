@@ -1,0 +1,273 @@
+{
+  "schema_version": 1,
+  "input_sha256": "0878d191bc76b93435b2e5a337fd62f9cb3c641d0ce25ca6fef0034d6dc7a030",
+  "configuration": {
+    "density_mg_ul": 1.0,
+    "discard_seconds": 0,
+    "seed": 0,
+    "bootstrap_draws": 2000
+  },
+  "runs": [
+    {
+      "run_id": "synthetic-100-0",
+      "mass_rate_mg_s": 1.5559524470445347,
+      "intercept_mg": 6.974044509531581,
+      "r_squared": 0.9999995643288246,
+      "residual_rmse_mg": 0.09185881143087707,
+      "n_readings": 31,
+      "duration_s": 300.0,
+      "target_flow_ul_min": 100.0,
+      "measured_flow_ul_min": 93.35714682267208,
+      "error_percent": -6.642853177327923,
+      "late_vs_early_slope_change_percent": 0.032968315984811404,
+      "flags": []
+    },
+    {
+      "run_id": "synthetic-100-1",
+      "mass_rate_mg_s": 1.5432690819984347,
+      "intercept_mg": 7.026220847568283,
+      "r_squared": 0.9999995655453163,
+      "residual_rmse_mg": 0.09098273443476605,
+      "n_readings": 31,
+      "duration_s": 300.0,
+      "target_flow_ul_min": 100.0,
+      "measured_flow_ul_min": 92.59614491990608,
+      "error_percent": -7.40385508009392,
+      "late_vs_early_slope_change_percent": 0.0018879572271011016,
+      "flags": []
+    },
+    {
+      "run_id": "synthetic-100-2",
+      "mass_rate_mg_s": 1.536717947022444,
+      "intercept_mg": 6.990172334527642,
+      "r_squared": 0.9999994699930203,
+      "residual_rmse_mg": 0.1000645084633451,
+      "n_readings": 31,
+      "duration_s": 300.0,
+      "target_flow_ul_min": 100.0,
+      "measured_flow_ul_min": 92.20307682134663,
+      "error_percent": -7.796923178653373,
+      "late_vs_early_slope_change_percent": -0.0806320164339826,
+      "flags": []
+    },
+    {
+      "run_id": "synthetic-100-3",
+      "mass_rate_mg_s": 1.542773180853179,
+      "intercept_mg": 7.022089573404742,
+      "r_squared": 0.9999994805093715,
+      "residual_rmse_mg": 0.09945715812423575,
+      "n_readings": 31,
+      "duration_s": 300.0,
+      "target_flow_ul_min": 100.0,
+      "measured_flow_ul_min": 92.56639085119075,
+      "error_percent": -7.433609148809253,
+      "late_vs_early_slope_change_percent": 0.03496544333834372,
+      "flags": []
+    },
+    {
+      "run_id": "synthetic-100-4",
+      "mass_rate_mg_s": 1.559172431666254,
+      "intercept_mg": 7.010254738411163,
+      "r_squared": 0.999999352405385,
+      "residual_rmse_mg": 0.1122253311996859,
+      "n_readings": 31,
+      "duration_s": 300.0,
+      "target_flow_ul_min": 100.0,
+      "measured_flow_ul_min": 93.55034589997524,
+      "error_percent": -6.449654100024759,
+      "late_vs_early_slope_change_percent": 0.003331437887165044,
+      "flags": []
+    },
+    {
+      "run_id": "synthetic-25-0",
+      "mass_rate_mg_s": 0.38795435846016213,
+      "intercept_mg": 6.994333686990458,
+      "r_squared": 0.9999945854294487,
+      "residual_rmse_mg": 0.08074373092991,
+      "n_readings": 31,
+      "duration_s": 300.0,
+      "target_flow_ul_min": 25.0,
+      "measured_flow_ul_min": 23.27726150760973,
+      "error_percent": -6.890953969561082,
+      "late_vs_early_slope_change_percent": 0.16376438337238894,
+      "flags": []
+    },
+    {
+      "run_id": "synthetic-25-1",
+      "mass_rate_mg_s": 0.38658862123397575,
+      "intercept_mg": 7.067183397760097,
+      "r_squared": 0.9999924383475085,
+      "residual_rmse_mg": 0.09508325921179502,
+      "n_readings": 31,
+      "duration_s": 300.0,
+      "target_flow_ul_min": 25.0,
+      "measured_flow_ul_min": 23.195317274038544,
+      "error_percent": -7.218730903845824,
+      "late_vs_early_slope_change_percent": -0.37687187265321476,
+      "flags": []
+    },
+    {
+      "run_id": "synthetic-25-2",
+      "mass_rate_mg_s": 0.38886250794938954,
+      "intercept_mg": 7.022755588264431,
+      "r_squared": 0.9999909244189603,
+      "residual_rmse_mg": 0.10478044935777596,
+      "n_readings": 31,
+      "duration_s": 300.0,
+      "target_flow_ul_min": 25.0,
+      "measured_flow_ul_min": 23.33175047696337,
+      "error_percent": -6.672998092146514,
+      "late_vs_early_slope_change_percent": 0.121285571028128,
+      "flags": []
+    },
+    {
+      "run_id": "synthetic-25-3",
+      "mass_rate_mg_s": 0.3883537738973164,
+      "intercept_mg": 6.961337347250165,
+      "r_squared": 0.9999930616344086,
+      "residual_rmse_mg": 0.0914961078070872,
+      "n_readings": 31,
+      "duration_s": 300.0,
+      "target_flow_ul_min": 25.0,
+      "measured_flow_ul_min": 23.301226433838984,
+      "error_percent": -6.795094264644064,
+      "late_vs_early_slope_change_percent": -0.23538538553879598,
+      "flags": []
+    },
+    {
+      "run_id": "synthetic-25-4",
+      "mass_rate_mg_s": 0.38473528897330656,
+      "intercept_mg": 7.045209913248051,
+      "r_squared": 0.9999924103364136,
+      "residual_rmse_mg": 0.09480252998129543,
+      "n_readings": 31,
+      "duration_s": 300.0,
+      "target_flow_ul_min": 25.0,
+      "measured_flow_ul_min": 23.084117338398393,
+      "error_percent": -7.663530646406429,
+      "late_vs_early_slope_change_percent": -0.2843257968478028,
+      "flags": []
+    },
+    {
+      "run_id": "synthetic-50-0",
+      "mass_rate_mg_s": 0.778992053856514,
+      "intercept_mg": 7.038947301221867,
+      "r_squared": 0.9999982043875233,
+      "residual_rmse_mg": 0.09336513258504968,
+      "n_readings": 31,
+      "duration_s": 300.0,
+      "target_flow_ul_min": 50.0,
+      "measured_flow_ul_min": 46.73952323139084,
+      "error_percent": -6.520953537218317,
+      "late_vs_early_slope_change_percent": -0.05733542771492946,
+      "flags": []
+    },
+    {
+      "run_id": "synthetic-50-1",
+      "mass_rate_mg_s": 0.7841553440453088,
+      "intercept_mg": 6.984216706508477,
+      "r_squared": 0.9999976518466304,
+      "residual_rmse_mg": 0.10747583790357858,
+      "n_readings": 31,
+      "duration_s": 300.0,
+      "target_flow_ul_min": 50.0,
+      "measured_flow_ul_min": 47.04932064271853,
+      "error_percent": -5.901358714562946,
+      "late_vs_early_slope_change_percent": -0.03246241122704252,
+      "flags": []
+    },
+    {
+      "run_id": "synthetic-50-2",
+      "mass_rate_mg_s": 0.7710385072851073,
+      "intercept_mg": 6.962127476407574,
+      "r_squared": 0.9999969404745502,
+      "residual_rmse_mg": 0.12062817603231761,
+      "n_readings": 31,
+      "duration_s": 300.0,
+      "target_flow_ul_min": 50.0,
+      "measured_flow_ul_min": 46.262310437106436,
+      "error_percent": -7.4753791257871285,
+      "late_vs_early_slope_change_percent": 0.2025280573694284,
+      "flags": []
+    },
+    {
+      "run_id": "synthetic-50-3",
+      "mass_rate_mg_s": 0.769155728263455,
+      "intercept_mg": 7.014197220305121,
+      "r_squared": 0.999997598254556,
+      "residual_rmse_mg": 0.10661622017533358,
+      "n_readings": 31,
+      "duration_s": 300.0,
+      "target_flow_ul_min": 50.0,
+      "measured_flow_ul_min": 46.1493436958073,
+      "error_percent": -7.701312608385393,
+      "late_vs_early_slope_change_percent": -0.08076305142988839,
+      "flags": []
+    },
+    {
+      "run_id": "synthetic-50-4",
+      "mass_rate_mg_s": 0.7696780376255724,
+      "intercept_mg": 6.986750975431036,
+      "r_squared": 0.9999978597947018,
+      "residual_rmse_mg": 0.10071224337330172,
+      "n_readings": 31,
+      "duration_s": 300.0,
+      "target_flow_ul_min": 50.0,
+      "measured_flow_ul_min": 46.18068225753434,
+      "error_percent": -7.638635484931314,
+      "late_vs_early_slope_change_percent": 0.03219379424434013,
+      "flags": []
+    }
+  ],
+  "targets": [
+    {
+      "target_flow_ul_min": 25.0,
+      "n_runs": 5,
+      "mean_flow_ul_min": 23.2379346061698,
+      "sd_flow_ul_min": 0.09978710726087597,
+      "mean_error_percent": -7.048261575320794,
+      "mean_flow_ci95": [
+        23.150810845903283,
+        23.308643065842894
+      ],
+      "flagged_runs": []
+    },
+    {
+      "target_flow_ul_min": 50.0,
+      "n_runs": 5,
+      "mean_flow_ul_min": 46.47623605291149,
+      "sd_flow_ul_min": 0.39928715031242135,
+      "mean_error_percent": -7.047527894177023,
+      "mean_flow_ci95": [
+        46.18447246875795,
+        46.813633483416154
+      ],
+      "flagged_runs": []
+    },
+    {
+      "target_flow_ul_min": 100.0,
+      "n_runs": 5,
+      "mean_flow_ul_min": 92.85462106301816,
+      "sd_flow_ul_min": 0.572486169767054,
+      "mean_error_percent": -7.145378936981842,
+      "mean_flow_ci95": [
+        92.42701605299617,
+        93.28222607304014
+      ],
+      "flagged_runs": []
+    }
+  ],
+  "notes": [
+    "Offline research analysis. No hardware commands are generated.",
+    "Intervals resample independent run slopes, not serially correlated readings.",
+    "Fewer than three runs: no interval. Small repeat counts give unstable intervals.",
+    "Density, balance calibration, evaporation and collection losses are not included in uncertainty.",
+    "R-squared <0.95 and >20% half-run drift are diagnostic flags, not acceptance standards.",
+    "Flagged runs remain in summaries; inspect them before interpreting mean flow."
+  ],
+  "environment": {
+    "python": "3.12.14",
+    "numpy": "2.3.5",
+    "perfusioncal": "0.1.0"
+  }
+}

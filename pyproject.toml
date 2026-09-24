@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "perfusion-calibration-lab"
+version = "0.1.0"
+description = "Offline gravimetric flow calibration and repeat-run uncertainty for research pumps."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Dylan Stechmann"}]
+dependencies = ["numpy>=1.24,<3"]
+
+[project.scripts]
+perfusioncal = "perfusioncal.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
