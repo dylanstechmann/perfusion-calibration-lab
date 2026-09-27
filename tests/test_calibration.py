@@ -1,12 +1,15 @@
 import csv
+import hashlib
+import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 
 from perfusioncal.analysis import analyze, fit_line
-from perfusioncal.cli import write_demo
+from perfusioncal.cli import main, write_demo
 
 
 class CalibrationTests(unittest.TestCase):
@@ -73,6 +76,57 @@ class CalibrationTests(unittest.TestCase):
         fit = fit_line(np.arange(5), np.arange(5) * 0.5 - 100)
         self.assertAlmostEqual(fit["mass_rate_mg_s"], 0.5)
         self.assertAlmostEqual(fit["r_squared"], 1)
+
+    def test_hash_identifies_the_parsed_snapshot_if_input_changes(self):
+        self.write_rows([["one", t, 14 + 2 * t, 60] for t in [0, 1, 2, 3]])
+        original = self.path.read_bytes()
+        read_bytes = Path.read_bytes
+        reads = []
+
+        def replace_after_read(path):
+            data = read_bytes(path)
+            reads.append(path)
+            path.write_text("changed after reading\n", encoding="utf-8")
+            return data
+
+        with patch.object(Path, "read_bytes", replace_after_read):
+            report = analyze(self.path, density_mg_ul=2)
+        self.assertEqual(reads, [self.path])
+        self.assertEqual(report["input_sha256"], hashlib.sha256(original).hexdigest())
+        self.assertAlmostEqual(report["runs"][0]["measured_flow_ul_min"], 60)
+        self.assertNotEqual(self.path.read_bytes(), original)
+
+    def test_failed_report_publication_can_retry_without_partial_output(self):
+        self.write_rows([["one", t, 14 + 2 * t, 60] for t in [0, 1, 2, 3]])
+        output = Path(self.tmp.name) / "nested" / "report"
+        args = ["analyze", str(self.path), "--density-mg-ul", "2", "--out", str(output)]
+        rename = Path.rename
+
+        def fail_second_move(path, target):
+            if path.name == "REPORT.md":
+                self.assertTrue((output / "report.json").exists())
+                raise OSError("simulated publication failure")
+            return rename(path, target)
+
+        with patch.object(Path, "rename", fail_second_move):
+            with self.assertRaises(SystemExit):
+                main(args)
+        self.assertFalse(output.exists())
+        self.assertEqual(main(args), 0)
+        report = json.loads((output / "report.json").read_text(encoding="utf-8"))
+        self.assertEqual(report["input_sha256"], hashlib.sha256(self.path.read_bytes()).hexdigest())
+        self.assertIn("# Perfusion calibration analysis", (output / "REPORT.md").read_text(encoding="utf-8"))
+
+    def test_existing_report_directory_is_preserved(self):
+        self.write_rows([["one", t, t, 60] for t in [0, 1, 2]])
+        output = Path(self.tmp.name) / "report"
+        output.mkdir()
+        marker = output / "keep.txt"
+        marker.write_text("original", encoding="utf-8")
+        with self.assertRaises(SystemExit):
+            main(["analyze", str(self.path), "--density-mg-ul", "1", "--out", str(output)])
+        self.assertEqual(marker.read_text(encoding="utf-8"), "original")
+        self.assertEqual(list(output.iterdir()), [marker])
 
 
 if __name__ == "__main__":

@@ -27,6 +27,13 @@ a claim about water density at your temperature. See the generated
 versions. `REPORT.md` gives a readable summary. Use a new output directory for
 each run so previous analyses are preserved.
 
+The input hash is calculated from the same CSV bytes used for fitting, so it
+identifies the analyzed snapshot even if the source file changes during a run.
+Reports are prepared beside the destination and then published to a new output
+directory. Existing outputs are preserved, and ordinary write failures remove
+the incomplete new directory so the command can be retried. This does not
+guarantee an atomic report after a process crash or power loss.
+
 ## Your measurements
 
 ```csv

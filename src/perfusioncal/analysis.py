@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import io
 from pathlib import Path
 
 import numpy as np
@@ -37,8 +38,10 @@ def analyze(path, *, density_mg_ul, discard_seconds=0.0, seed=0, bootstrap_draws
     if not isinstance(bootstrap_draws, int) or bootstrap_draws < 100:
         raise ValueError("use at least 100 bootstrap draws")
     path = Path(path)
+    # Parse and hash one snapshot so the reported digest identifies the fitted data.
+    input_bytes = path.read_bytes()
     runs = {}
-    with path.open(newline="", encoding="utf-8-sig") as handle:
+    with io.StringIO(input_bytes.decode("utf-8-sig"), newline="") as handle:
         reader = csv.DictReader(handle)
         expected = {"run_id", "time_s", "mass_mg", "target_flow_ul_min"}
         header = reader.fieldnames or []
@@ -99,7 +102,7 @@ def analyze(path, *, density_mg_ul, discard_seconds=0.0, seed=0, bootstrap_draws
                           "mean_error_percent": 100 * float(flows.mean() - target) / target,
                           "mean_flow_ci95": interval,
                           "flagged_runs": [r["run_id"] for r in subset if r["flags"]]})
-    return {"schema_version": 1, "input_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+    return {"schema_version": 1, "input_sha256": hashlib.sha256(input_bytes).hexdigest(),
             "configuration": {"density_mg_ul": density_mg_ul, "discard_seconds": discard_seconds,
                               "seed": seed, "bootstrap_draws": bootstrap_draws},
             "runs": result, "targets": summaries,
