@@ -78,6 +78,8 @@ the half-run check. Flagged runs remain in the summaries and are listed there.
 
 Intervals do not include systematic uncertainty from fluid density, the balance,
 evaporation, retained droplets, collection losses or the timing instrument.
+`flow_if_constant_evaporation` only shifts an apparent flow by a constant
+mass-loss rate you supply. It does not estimate that rate.
 Define a measurement procedure and an uncertainty budget before making a
 hardware accuracy claim. This software has been tested on constructed traces;
 no physical pump has been calibrated in this repository.

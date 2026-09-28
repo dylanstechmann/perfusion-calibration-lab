@@ -30,6 +30,28 @@ def fit_line(time_s, mass_mg):
             "n_readings": len(time_s), "duration_s": float(time_s[-1] - time_s[0])}
 
 
+def flow_if_constant_evaporation(apparent_flow_ul_min, evaporation_mg_s, density_mg_ul):
+    """Shift an apparent flow by a constant mass-loss rate.
+
+    This is a hypothetical sensitivity. It is not a measured evaporation rate
+    and it is not part of the bootstrap interval.
+    """
+    values = (apparent_flow_ul_min, evaporation_mg_s, density_mg_ul)
+    if any(isinstance(value, bool) or not isinstance(value, (int, float)) or not np.isfinite(value) for value in values):
+        raise ValueError("flow, evaporation, and density must be finite numbers")
+    if density_mg_ul <= 0:
+        raise ValueError("density_mg_ul must be positive")
+    correction_ul_min = float(evaporation_mg_s) * 60.0 / float(density_mg_ul)
+    return {
+        "apparent_flow_ul_min": float(apparent_flow_ul_min),
+        "evaporation_mg_s": float(evaporation_mg_s),
+        "density_mg_ul": float(density_mg_ul),
+        "correction_ul_min": correction_ul_min,
+        "implied_delivered_flow_ul_min": float(apparent_flow_ul_min) + correction_ul_min,
+        "note": "Constant evaporation is a hypothetical sensitivity, not a measured loss or a calibration.",
+    }
+
+
 def analyze(path, *, density_mg_ul, discard_seconds=0.0, seed=0, bootstrap_draws=2000):
     if not np.isfinite(density_mg_ul) or density_mg_ul <= 0:
         raise ValueError("density_mg_ul must be finite and positive")

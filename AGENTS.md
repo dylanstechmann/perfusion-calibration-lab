@@ -25,7 +25,7 @@ Use a new `--out` directory.
 ## Improve, in this order
 
 1. If the estimator changes, add a fixture with a known slope and density and assert flow within a tight tolerance.
-2. Optional: an evaporation sensitivity note (subtract a constant mass-loss rate, show the flow shift). Label it hypothetical.
+2. `flow_if_constant_evaporation` is the evaporation sensitivity. Do not add another copy of it, and do not fold it into the bootstrap.
 3. Do not add a hardware driver.
 
 ## Done when

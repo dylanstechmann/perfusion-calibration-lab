@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import numpy as np
 
-from perfusioncal.analysis import analyze, fit_line
+from perfusioncal.analysis import analyze, flow_if_constant_evaporation, fit_line
 from perfusioncal.cli import main, write_demo
 
 
@@ -32,6 +32,14 @@ class CalibrationTests(unittest.TestCase):
         self.assertAlmostEqual(run["intercept_mg"], 14)
         self.assertAlmostEqual(run["error_percent"], 0)
         self.assertIsNone(result["targets"][0]["mean_flow_ci95"])
+
+    def test_constant_evaporation_is_a_signed_shift_only(self):
+        shifted = flow_if_constant_evaporation(50, 0.01, 1)
+        self.assertAlmostEqual(shifted["correction_ul_min"], 0.6)
+        self.assertAlmostEqual(shifted["implied_delivered_flow_ul_min"], 50.6)
+        self.assertIn("hypothetical", shifted["note"])
+        with self.assertRaises(ValueError):
+            flow_if_constant_evaporation(50, 0.01, 0)
 
     def test_demo_exposes_injected_under_delivery(self):
         write_demo(self.path)
