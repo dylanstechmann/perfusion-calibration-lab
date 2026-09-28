@@ -129,6 +129,7 @@ def analyze(path, *, density_mg_ul, discard_seconds=0.0, seed=0, bootstrap_draws
                               "seed": seed, "bootstrap_draws": bootstrap_draws},
             "runs": result, "targets": summaries,
             "notes": ["Offline research analysis. No hardware commands are generated.",
+                      "This report alone is not a physical pump calibration or acceptance decision.",
                       "Intervals resample independent run slopes, not serially correlated readings.",
                       "Fewer than three runs: no interval. Small repeat counts give unstable intervals.",
                       "Density, balance calibration, evaporation and collection losses are not included in uncertainty.",
@@ -138,12 +139,16 @@ def analyze(path, *, density_mg_ul, discard_seconds=0.0, seed=0, bootstrap_draws
 
 def markdown(report):
     lines = ["# Perfusion calibration analysis", "", f"Input SHA-256: `{report['input_sha256']}`", "",
-             "| Target (µL/min) | Runs | Mean measured (µL/min) | Error (%) | Repeat SD |",
-             "|---:|---:|---:|---:|---:|"]
+             f"Density used: {report['configuration']['density_mg_ul']:g} mg/µL. "
+             f"Startup interval discarded: {report['configuration']['discard_seconds']:g} s.", "",
+             "| Target (µL/min) | Runs | Mean measured (µL/min) | Error (%) | Repeat SD (µL/min) | 95% run-bootstrap interval (µL/min) |",
+             "|---:|---:|---:|---:|---:|---:|"]
     for row in report["targets"]:
         sd = "unavailable" if row["sd_flow_ul_min"] is None else f"{row['sd_flow_ul_min']:.3f}"
+        interval = row["mean_flow_ci95"]
+        ci = "unavailable (<3 runs)" if interval is None else f"[{interval[0]:.3f}, {interval[1]:.3f}]"
         lines.append(f"| {row['target_flow_ul_min']:.3f} | {row['n_runs']} | {row['mean_flow_ul_min']:.3f} | "
-                     f"{row['mean_error_percent']:.2f} | {sd} |")
+                     f"{row['mean_error_percent']:.2f} | {sd} | {ci} |")
     lines.extend(["", "## Run diagnostics", ""])
     for run in report["runs"]:
         lines.append(f"- {run['run_id']}: {', '.join(run['flags']) or 'no diagnostic flags'}")

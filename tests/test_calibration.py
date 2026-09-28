@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import numpy as np
 
-from perfusioncal.analysis import analyze, flow_if_constant_evaporation, fit_line
+from perfusioncal.analysis import analyze, flow_if_constant_evaporation, fit_line, markdown
 from perfusioncal.cli import main, write_demo
 
 
@@ -32,6 +32,13 @@ class CalibrationTests(unittest.TestCase):
         self.assertAlmostEqual(run["intercept_mg"], 14)
         self.assertAlmostEqual(run["error_percent"], 0)
         self.assertIsNone(result["targets"][0]["mean_flow_ci95"])
+        self.assertIn("unavailable (<3 runs)", markdown(result))
+
+    def test_checked_in_fixture_report_identifies_the_fixture_bytes(self):
+        root = Path(__file__).resolve().parents[1]
+        fixture = root / "examples/synthetic_measurements.csv"
+        example = json.loads((root / "examples/results/report.json").read_text(encoding="utf-8"))
+        self.assertEqual(example["input_sha256"], hashlib.sha256(fixture.read_bytes()).hexdigest())
 
     def test_constant_evaporation_is_a_signed_shift_only(self):
         shifted = flow_if_constant_evaporation(50, 0.01, 1)
@@ -51,6 +58,12 @@ class CalibrationTests(unittest.TestCase):
             self.assertEqual(target["n_runs"], 5)
             self.assertIsNotNone(target["mean_flow_ci95"])
         self.assertEqual(report, analyze(self.path, density_mg_ul=1, bootstrap_draws=100))
+        readable = markdown(report)
+        self.assertIn("Density used: 1 mg/µL", readable)
+        self.assertIn("95% run-bootstrap interval", readable)
+        first_interval = report["targets"][0]["mean_flow_ci95"]
+        self.assertIn(f"[{first_interval[0]:.3f}, {first_interval[1]:.3f}]", readable)
+        self.assertIn("not a physical pump calibration", readable)
 
     def test_reject_duplicate_time_and_nonfinite_values(self):
         for rows in [[["one", 0, 0, 50], ["one", 0, 2, 50], ["one", 1, 3, 50]],

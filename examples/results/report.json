@@ -259,6 +259,7 @@
   ],
   "notes": [
     "Offline research analysis. No hardware commands are generated.",
+    "This report alone is not a physical pump calibration or acceptance decision.",
     "Intervals resample independent run slopes, not serially correlated readings.",
     "Fewer than three runs: no interval. Small repeat counts give unstable intervals.",
     "Density, balance calibration, evaporation and collection losses are not included in uncertainty.",
@@ -266,8 +267,8 @@
     "Flagged runs remain in summaries; inspect them before interpreting mean flow."
   ],
   "environment": {
-    "python": "3.12.14",
-    "numpy": "2.3.5",
+    "python": "3.11.2",
+    "numpy": "2.4.6",
     "perfusioncal": "0.1.0"
   }
 }

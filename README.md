@@ -24,11 +24,15 @@ a claim about water density at your temperature. See the generated
 [example report](examples/results/REPORT.md).
 
 `report.json` contains all fitted runs, flags, settings, input hash and software
-versions. `REPORT.md` gives a readable summary. Use a new output directory for
+versions. `REPORT.md` shows the density, repeat standard deviation and the
+run-bootstrap interval where at least three independent runs exist. That
+interval excludes density and balance bias. Use a new output directory for
 each run so previous analyses are preserved.
 
 The input hash is calculated from the same CSV bytes used for fitting, so it
 identifies the analyzed snapshot even if the source file changes during a run.
+The checked-in synthetic CSV is pinned to LF line endings so its example report
+has the same byte hash on Windows and Linux. User CSVs retain their own byte hash.
 Reports are prepared beside the destination and then published to a new output
 directory. Existing outputs are preserved, and ordinary write failures remove
 the incomplete new directory so the command can be retried. This does not
