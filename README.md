@@ -75,10 +75,17 @@ an unstable interval; repeated balance readings are not independent replicates.
 
 ## Diagnostics and limits
 
-Low R² (<0.95), nonpositive flow, and large changes between early/late half-run
-slopes (>20%) are inspection flags. They are transparent software heuristics,
-not calibration acceptance standards. At least six readings are needed for
-the half-run check. Flagged runs remain in the summaries and are listed there.
+Low R² (<0.95), nonpositive flow, large changes between early/late half-run
+slopes (>20%), and detected mass reading outliers (via IQR Tukey fences or
+Grubbs' test on linear residuals) are inspection flags. They are transparent
+software heuristics, not calibration acceptance standards. At least six
+readings are needed for the half-run check. Flagged runs and outlier counts
+remain in the summaries and are listed there for operator review without
+silently discarding readings.
+
+Options:
+- `--outlier-method {iqr, grubbs}` (default: `iqr`)
+- `--outlier-threshold` (default: 1.5 for IQR, 0.05 for Grubbs)
 
 Intervals do not include systematic uncertainty from fluid density, the balance,
 evaporation, retained droplets, collection losses or the timing instrument.

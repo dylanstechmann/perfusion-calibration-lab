@@ -10,7 +10,61 @@ from pathlib import Path
 import numpy as np
 
 
-def fit_line(time_s, mass_mg):
+def detect_outliers_iqr(residuals: np.ndarray, factor: float = 1.5) -> list[int]:
+    """Identify indices of residual outliers using Tukey's fences (IQR method)."""
+    residuals = np.asarray(residuals, dtype=float)
+    if len(residuals) < 4:
+        return []
+    q25, q75 = np.percentile(residuals, [25, 75])
+    iqr = q75 - q25
+    if iqr == 0:
+        std = float(np.std(residuals))
+        if std == 0:
+            return []
+        z = np.abs(residuals - np.median(residuals)) / std
+        return [int(i) for i in np.where(z > 3.0)[0]]
+    lower = q25 - factor * iqr
+    upper = q75 + factor * iqr
+    outlier_mask = (residuals < lower) | (residuals > upper)
+    return [int(i) for i in np.where(outlier_mask)[0]]
+
+
+def detect_outliers_grubbs(residuals: np.ndarray, alpha: float = 0.05) -> list[int]:
+    """Identify indices of residual outliers using Grubbs' maximum normalized residual test."""
+    residuals = np.asarray(residuals, dtype=float)
+    n = len(residuals)
+    if n < 4:
+        return []
+    std = float(np.std(residuals, ddof=1))
+    if std == 0:
+        return []
+    mean = float(np.mean(residuals))
+    deviations = np.abs(residuals - mean)
+    max_idx = int(np.argmax(deviations))
+    g_stat = deviations[max_idx] / std
+    p = 1.0 - alpha / (2.0 * n)
+    t_val = np.sqrt(max(0.1, 2.0 * np.log(1.0 / (1.0 - p))))
+    df = n - 2
+    t_stat = t_val * (1.0 + (t_val**2 + 1.0) / (4.0 * df))
+    g_crit = ((n - 1.0) / np.sqrt(n)) * np.sqrt(t_stat**2 / (df + t_stat**2))
+    if g_stat > g_crit:
+        return [max_idx]
+    return []
+
+
+def detect_outliers(residuals: np.ndarray, method: str = "iqr", threshold: float | None = None) -> list[int]:
+    method = method.lower()
+    if method == "iqr":
+        factor = 1.5 if threshold is None else threshold
+        return detect_outliers_iqr(residuals, factor=factor)
+    elif method == "grubbs":
+        alpha = 0.05 if threshold is None else threshold
+        return detect_outliers_grubbs(residuals, alpha=alpha)
+    else:
+        raise ValueError(f"unknown outlier method: '{method}'; choose 'iqr' or 'grubbs'")
+
+
+def fit_line(time_s, mass_mg, outlier_method: str = "iqr", outlier_threshold: float | None = None):
     time_s = np.asarray(time_s, dtype=float)
     mass_mg = np.asarray(mass_mg, dtype=float)
     if time_s.ndim != 1 or mass_mg.shape != time_s.shape or len(time_s) < 3:
@@ -24,10 +78,18 @@ def fit_line(time_s, mass_mg):
     intercept = float(mass_mg.mean() - slope * time_s.mean())
     residual = mass_mg - (intercept + slope * time_s)
     ss_total = float(np.sum((mass_mg - mass_mg.mean()) ** 2))
-    return {"mass_rate_mg_s": slope, "intercept_mg": intercept,
-            "r_squared": None if ss_total == 0 else float(1 - (residual @ residual) / ss_total),
-            "residual_rmse_mg": float(np.sqrt(np.mean(residual ** 2))),
-            "n_readings": len(time_s), "duration_s": float(time_s[-1] - time_s[0])}
+    outlier_indices = detect_outliers(residual, method=outlier_method, threshold=outlier_threshold)
+    return {
+        "mass_rate_mg_s": slope,
+        "intercept_mg": intercept,
+        "r_squared": None if ss_total == 0 else float(1 - (residual @ residual) / ss_total),
+        "residual_rmse_mg": float(np.sqrt(np.mean(residual ** 2))),
+        "n_readings": len(time_s),
+        "duration_s": float(time_s[-1] - time_s[0]),
+        "outlier_indices": outlier_indices,
+        "outlier_count": len(outlier_indices),
+    }
+
 
 
 def flow_if_constant_evaporation(apparent_flow_ul_min, evaporation_mg_s, density_mg_ul):
@@ -52,7 +114,8 @@ def flow_if_constant_evaporation(apparent_flow_ul_min, evaporation_mg_s, density
     }
 
 
-def analyze(path, *, density_mg_ul, discard_seconds=0.0, seed=0, bootstrap_draws=2000):
+def analyze(path, *, density_mg_ul, discard_seconds=0.0, seed=0, bootstrap_draws=2000,
+            outlier_method="iqr", outlier_threshold=None):
     if not np.isfinite(density_mg_ul) or density_mg_ul <= 0:
         raise ValueError("density_mg_ul must be finite and positive")
     if not np.isfinite(discard_seconds) or discard_seconds < 0:
@@ -89,7 +152,7 @@ def analyze(path, *, density_mg_ul, discard_seconds=0.0, seed=0, bootstrap_draws
         if len(set(array[:, 2])) != 1:
             raise ValueError(f"{run_id}: target flow changes within a run; separate runs first")
         selected = array[array[:, 0] - array[0, 0] >= discard_seconds]
-        fit = fit_line(selected[:, 0], selected[:, 1])
+        fit = fit_line(selected[:, 0], selected[:, 1], outlier_method=outlier_method, outlier_threshold=outlier_threshold)
         target = float(array[0, 2])
         flow = fit["mass_rate_mg_s"] * 60.0 / density_mg_ul
         drift = None
@@ -105,9 +168,16 @@ def analyze(path, *, density_mg_ul, discard_seconds=0.0, seed=0, bootstrap_draws
             flags.append("inspect_nonlinearity_or_noise")
         if drift is not None and abs(drift) > 20:
             flags.append("inspect_within_run_drift")
+        if fit["outlier_count"] > 0:
+            flags.append(f"outlier_readings_detected({fit['outlier_count']})")
+        outlier_times = [float(selected[i, 0]) for i in fit["outlier_indices"]]
+        outlier_residuals = [round(float(selected[i, 1] - (fit["intercept_mg"] + fit["mass_rate_mg_s"] * selected[i, 0])), 4)
+                             for i in fit["outlier_indices"]]
         result.append({"run_id": run_id, **fit, "target_flow_ul_min": target,
                        "measured_flow_ul_min": flow, "error_percent": 100 * (flow - target) / target,
-                       "late_vs_early_slope_change_percent": drift, "flags": flags})
+                       "late_vs_early_slope_change_percent": drift,
+                       "outlier_times_s": outlier_times, "outlier_residuals_mg": outlier_residuals,
+                       "flags": flags})
     summaries = []
     rng = np.random.default_rng(seed)
     for target in sorted({r["target_flow_ul_min"] for r in result}):
@@ -123,10 +193,12 @@ def analyze(path, *, density_mg_ul, discard_seconds=0.0, seed=0, bootstrap_draws
                           "sd_flow_ul_min": None if len(flows) < 2 else float(flows.std(ddof=1)),
                           "mean_error_percent": 100 * float(flows.mean() - target) / target,
                           "mean_flow_ci95": interval,
-                          "flagged_runs": [r["run_id"] for r in subset if r["flags"]]})
+                          "flagged_runs": [r["run_id"] for r in subset if r["flags"]],
+                          "outlier_runs": [r["run_id"] for r in subset if r["outlier_count"] > 0]})
     return {"schema_version": 1, "input_sha256": hashlib.sha256(input_bytes).hexdigest(),
             "configuration": {"density_mg_ul": density_mg_ul, "discard_seconds": discard_seconds,
-                              "seed": seed, "bootstrap_draws": bootstrap_draws},
+                              "seed": seed, "bootstrap_draws": bootstrap_draws,
+                              "outlier_method": outlier_method, "outlier_threshold": outlier_threshold},
             "runs": result, "targets": summaries,
             "notes": ["Offline research analysis. No hardware commands are generated.",
                       "This report alone is not a physical pump calibration or acceptance decision.",
@@ -134,13 +206,15 @@ def analyze(path, *, density_mg_ul, discard_seconds=0.0, seed=0, bootstrap_draws
                       "Fewer than three runs: no interval. Small repeat counts give unstable intervals.",
                       "Density, balance calibration, evaporation and collection losses are not included in uncertainty.",
                       "R-squared <0.95 and >20% half-run drift are diagnostic flags, not acceptance standards.",
+                      "Automated outlier detection on linear residuals flags anomalous balance readings without altering regression weights.",
                       "Flagged runs remain in summaries; inspect them before interpreting mean flow."]}
 
 
 def markdown(report):
     lines = ["# Perfusion calibration analysis", "", f"Input SHA-256: `{report['input_sha256']}`", "",
              f"Density used: {report['configuration']['density_mg_ul']:g} mg/µL. "
-             f"Startup interval discarded: {report['configuration']['discard_seconds']:g} s.", "",
+             f"Startup interval discarded: {report['configuration']['discard_seconds']:g} s. "
+             f"Outlier method: {report['configuration'].get('outlier_method', 'iqr')}.", "",
              "| Target (µL/min) | Runs | Mean measured (µL/min) | Error (%) | Repeat SD (µL/min) | 95% run-bootstrap interval (µL/min) |",
              "|---:|---:|---:|---:|---:|---:|"]
     for row in report["targets"]:
@@ -151,6 +225,8 @@ def markdown(report):
                      f"{row['mean_error_percent']:.2f} | {sd} | {ci} |")
     lines.extend(["", "## Run diagnostics", ""])
     for run in report["runs"]:
-        lines.append(f"- {run['run_id']}: {', '.join(run['flags']) or 'no diagnostic flags'}")
+        flag_str = ', '.join(run['flags']) or 'no diagnostic flags'
+        lines.append(f"- {run['run_id']}: {flag_str}")
     lines.extend(["", "## Interpretation", "", *[f"- {n}" for n in report["notes"]], ""])
     return "\n".join(lines)
+

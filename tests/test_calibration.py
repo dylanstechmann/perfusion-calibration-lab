@@ -149,6 +149,54 @@ class CalibrationTests(unittest.TestCase):
         self.assertEqual(marker.read_text(encoding="utf-8"), "original")
         self.assertEqual(list(output.iterdir()), [marker])
 
+    def test_outlier_detection_iqr_and_grubbs(self):
+        from perfusioncal.analysis import detect_outliers, detect_outliers_grubbs, detect_outliers_iqr
+        # Baseline residuals with one prominent spike
+        clean = np.zeros(20)
+        self.assertEqual(detect_outliers_iqr(clean), [])
+        spiked = np.zeros(20)
+        spiked[10] = 50.0  # Spike at index 10
+        self.assertEqual(detect_outliers_iqr(spiked, factor=1.5), [10])
+        self.assertEqual(detect_outliers_grubbs(spiked), [10])
+        self.assertEqual(detect_outliers(spiked, method="iqr"), [10])
+        self.assertEqual(detect_outliers(spiked, method="grubbs"), [10])
+        with self.assertRaises(ValueError):
+            detect_outliers(spiked, method="unknown")
+
+    def test_outlier_flagging_in_analyze_and_markdown(self):
+        # Create a run where one mass reading is an outlier
+        times = list(range(0, 100, 10))  # 10 readings: 0, 10, ..., 90
+        masses = [5.0 + 1.0 * t for t in times]
+        masses[5] += 25.0  # Spike at time 50s
+        rows = [["spike_run", t, m, 60] for t, m in zip(times, masses)]
+        self.write_rows(rows)
+
+        report = analyze(self.path, density_mg_ul=1.0)
+        run = report["runs"][0]
+        self.assertEqual(run["outlier_count"], 1)
+        self.assertEqual(run["outlier_indices"], [5])
+        self.assertEqual(run["outlier_times_s"], [50.0])
+        self.assertIn("outlier_readings_detected(1)", run["flags"])
+        self.assertIn("spike_run", report["targets"][0]["outlier_runs"])
+
+        md = markdown(report)
+        self.assertIn("outlier_readings_detected(1)", md)
+        self.assertIn("Outlier method: iqr", md)
+
+    def test_cli_outlier_options(self):
+        times = list(range(0, 100, 10))
+        masses = [5.0 + 1.0 * t for t in times]
+        masses[4] += 30.0
+        self.write_rows([["run_a", t, m, 50] for t, m in zip(times, masses)])
+        output = Path(self.tmp.name) / "cli_outlier_out"
+        rc = main(["analyze", str(self.path), "--density-mg-ul", "1.0",
+                   "--outlier-method", "grubbs", "--out", str(output)])
+        self.assertEqual(rc, 0)
+        rep = json.loads((output / "report.json").read_text(encoding="utf-8"))
+        self.assertEqual(rep["configuration"]["outlier_method"], "grubbs")
+        self.assertEqual(rep["runs"][0]["outlier_count"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -41,14 +41,24 @@ def main(argv=None):
     run.add_argument("--density-mg-ul", type=float, required=True, help="density for your fluid and temperature")
     run.add_argument("--discard-seconds", type=float, default=0)
     run.add_argument("--seed", type=int, default=0)
+    run.add_argument("--outlier-method", choices=["iqr", "grubbs"], default="iqr",
+                     help="outlier detection method on linear residuals (default: iqr)")
+    run.add_argument("--outlier-threshold", type=float, default=None,
+                     help="outlier threshold factor (default: 1.5 for iqr, 0.05 for grubbs)")
     run.add_argument("--out", required=True, help="new output directory")
     args = parser.parse_args(argv)
     try:
         if args.command == "demo":
             write_demo(args.out, args.seed)
         else:
-            report = analyze(args.csv, density_mg_ul=args.density_mg_ul,
-                             discard_seconds=args.discard_seconds, seed=args.seed)
+            report = analyze(
+                args.csv,
+                density_mg_ul=args.density_mg_ul,
+                discard_seconds=args.discard_seconds,
+                seed=args.seed,
+                outlier_method=args.outlier_method,
+                outlier_threshold=args.outlier_threshold,
+            )
             report["environment"] = {"python": platform.python_version(), "numpy": np.__version__,
                                       "perfusioncal": __version__}
             output = Path(args.out)
