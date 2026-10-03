@@ -5,14 +5,93 @@ from __future__ import annotations
 import csv
 import hashlib
 import io
+import math
 from pathlib import Path
 
 import numpy as np
 
 
+def _regularized_beta(x: float, a: float, b: float) -> float:
+    """Regularized incomplete beta using a continued fraction (Numerical Recipes)."""
+    if x <= 0:
+        return 0.0
+    if x >= 1:
+        return 1.0
+
+    def fraction(aa: float, bb: float, xx: float) -> float:
+        qab, qap, qam = aa + bb, aa + 1.0, aa - 1.0
+        c = 1.0
+        d = 1.0 - qab * xx / qap
+        d = 1e-300 if abs(d) < 1e-300 else d
+        d = 1.0 / d
+        result = d
+        for m in range(1, 401):
+            m2 = 2 * m
+            term = m * (bb - m) * xx / ((qam + m2) * (aa + m2))
+            d = 1.0 + term * d
+            d = 1e-300 if abs(d) < 1e-300 else d
+            c = 1.0 + term / c
+            c = 1e-300 if abs(c) < 1e-300 else c
+            d = 1.0 / d
+            result *= d * c
+            term = -(aa + m) * (qab + m) * xx / ((aa + m2) * (qap + m2))
+            d = 1.0 + term * d
+            d = 1e-300 if abs(d) < 1e-300 else d
+            c = 1.0 + term / c
+            c = 1e-300 if abs(c) < 1e-300 else c
+            d = 1.0 / d
+            delta = d * c
+            result *= delta
+            if abs(delta - 1.0) <= 3e-14:
+                return result
+        raise ArithmeticError("Student-t critical-value continued fraction did not converge")
+
+    bt = math.exp(math.lgamma(a + b) - math.lgamma(a) - math.lgamma(b)
+                  + a * math.log(x) + b * math.log1p(-x))
+    if x < (a + 1.0) / (a + b + 2.0):
+        return bt * fraction(a, b, x) / a
+    return 1.0 - bt * fraction(b, a, 1.0 - x) / b
+
+
+def _student_t_quantile(probability: float, degrees_of_freedom: int) -> float:
+    if not 0.5 < probability < 1 or degrees_of_freedom < 1:
+        raise ValueError("Student-t quantile requires probability in (0.5, 1) and positive degrees of freedom")
+    low, high = 0.0, 1.0
+
+    def cdf(value: float) -> float:
+        x = degrees_of_freedom / (degrees_of_freedom + value * value)
+        return 1.0 - 0.5 * _regularized_beta(x, degrees_of_freedom / 2.0, 0.5)
+
+    while cdf(high) < probability:
+        high *= 2.0
+        if not math.isfinite(high):
+            raise ArithmeticError("could not bracket Student-t quantile")
+    for _ in range(100):
+        middle = (low + high) / 2.0
+        if cdf(middle) < probability:
+            low = middle
+        else:
+            high = middle
+    return (low + high) / 2.0
+
+
+def _grubbs_critical_value(n: int, alpha: float) -> float:
+    if n < 3:
+        raise ValueError("Grubbs' test requires at least three observations")
+    if isinstance(alpha, bool) or not isinstance(alpha, (int, float)) or not np.isfinite(alpha) or not 0 < alpha < 1:
+        raise ValueError("Grubbs alpha must be strictly between 0 and 1")
+    degrees_of_freedom = n - 2
+    t_critical = _student_t_quantile(1.0 - alpha / (2.0 * n), degrees_of_freedom)
+    return ((n - 1.0) / np.sqrt(n)) * np.sqrt(t_critical**2 / (degrees_of_freedom + t_critical**2))
+
+
 def detect_outliers_iqr(residuals: np.ndarray, factor: float = 1.5) -> list[int]:
     """Identify indices of residual outliers using Tukey's fences (IQR method)."""
     residuals = np.asarray(residuals, dtype=float)
+    if residuals.ndim != 1 or not np.isfinite(residuals).all():
+        raise ValueError("residuals must be a finite one-dimensional array")
+    if isinstance(factor, bool) or not isinstance(factor, (int, float)) or not np.isfinite(factor) or factor < 0:
+        raise ValueError("IQR factor must be a finite nonnegative number")
     if len(residuals) < 4:
         return []
     q25, q75 = np.percentile(residuals, [25, 75])
@@ -32,6 +111,10 @@ def detect_outliers_iqr(residuals: np.ndarray, factor: float = 1.5) -> list[int]
 def detect_outliers_grubbs(residuals: np.ndarray, alpha: float = 0.05) -> list[int]:
     """Identify indices of residual outliers using Grubbs' maximum normalized residual test."""
     residuals = np.asarray(residuals, dtype=float)
+    if residuals.ndim != 1 or not np.isfinite(residuals).all():
+        raise ValueError("residuals must be a finite one-dimensional array")
+    if isinstance(alpha, bool) or not isinstance(alpha, (int, float)) or not np.isfinite(alpha) or not 0 < alpha < 1:
+        raise ValueError("Grubbs alpha must be strictly between 0 and 1")
     n = len(residuals)
     if n < 4:
         return []
@@ -42,17 +125,15 @@ def detect_outliers_grubbs(residuals: np.ndarray, alpha: float = 0.05) -> list[i
     deviations = np.abs(residuals - mean)
     max_idx = int(np.argmax(deviations))
     g_stat = deviations[max_idx] / std
-    p = 1.0 - alpha / (2.0 * n)
-    t_val = np.sqrt(max(0.1, 2.0 * np.log(1.0 / (1.0 - p))))
-    df = n - 2
-    t_stat = t_val * (1.0 + (t_val**2 + 1.0) / (4.0 * df))
-    g_crit = ((n - 1.0) / np.sqrt(n)) * np.sqrt(t_stat**2 / (df + t_stat**2))
+    g_crit = _grubbs_critical_value(n, alpha)
     if g_stat > g_crit:
         return [max_idx]
     return []
 
 
 def detect_outliers(residuals: np.ndarray, method: str = "iqr", threshold: float | None = None) -> list[int]:
+    if not isinstance(method, str):
+        raise ValueError("outlier method must be 'iqr' or 'grubbs'")
     method = method.lower()
     if method == "iqr":
         factor = 1.5 if threshold is None else threshold
@@ -116,10 +197,17 @@ def flow_if_constant_evaporation(apparent_flow_ul_min, evaporation_mg_s, density
 
 def analyze(path, *, density_mg_ul, discard_seconds=0.0, seed=0, bootstrap_draws=2000,
             outlier_method="iqr", outlier_threshold=None):
-    if not np.isfinite(density_mg_ul) or density_mg_ul <= 0:
+    if isinstance(density_mg_ul, bool) or not isinstance(density_mg_ul, (int, float)) or not np.isfinite(density_mg_ul) or density_mg_ul <= 0:
         raise ValueError("density_mg_ul must be finite and positive")
-    if not np.isfinite(discard_seconds) or discard_seconds < 0:
+    if isinstance(discard_seconds, bool) or not isinstance(discard_seconds, (int, float)) or not np.isfinite(discard_seconds) or discard_seconds < 0:
         raise ValueError("discard_seconds must be finite and nonnegative")
+    if outlier_threshold is not None:
+        if isinstance(outlier_threshold, bool) or not isinstance(outlier_threshold, (int, float)) or not np.isfinite(outlier_threshold):
+            raise ValueError("outlier_threshold must be a finite number")
+        valid_threshold = (outlier_threshold >= 0 if outlier_method == "iqr"
+                           else 0 < outlier_threshold < 1 if outlier_method == "grubbs" else False)
+        if not valid_threshold:
+            raise ValueError("IQR threshold must be nonnegative; Grubbs alpha must lie strictly between 0 and 1")
     if not isinstance(bootstrap_draws, int) or bootstrap_draws < 100:
         raise ValueError("use at least 100 bootstrap draws")
     path = Path(path)
@@ -206,7 +294,7 @@ def analyze(path, *, density_mg_ul, discard_seconds=0.0, seed=0, bootstrap_draws
                       "Fewer than three runs: no interval. Small repeat counts give unstable intervals.",
                       "Density, balance calibration, evaporation and collection losses are not included in uncertainty.",
                       "R-squared <0.95 and >20% half-run drift are diagnostic flags, not acceptance standards.",
-                      "Automated outlier detection on linear residuals flags anomalous balance readings without altering regression weights.",
+                      "IQR and Grubbs outlier flags do not alter regression weights; Grubbs' independent-normal assumptions may not hold for correlated linear-fit residuals.",
                       "Flagged runs remain in summaries; inspect them before interpreting mean flow."]}
 
 
@@ -229,4 +317,3 @@ def markdown(report):
         lines.append(f"- {run['run_id']}: {flag_str}")
     lines.extend(["", "## Interpretation", "", *[f"- {n}" for n in report["notes"]], ""])
     return "\n".join(lines)
-

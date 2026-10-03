@@ -150,7 +150,7 @@ class CalibrationTests(unittest.TestCase):
         self.assertEqual(list(output.iterdir()), [marker])
 
     def test_outlier_detection_iqr_and_grubbs(self):
-        from perfusioncal.analysis import detect_outliers, detect_outliers_grubbs, detect_outliers_iqr
+        from perfusioncal.analysis import detect_outliers, detect_outliers_grubbs, detect_outliers_iqr, _grubbs_critical_value
         # Baseline residuals with one prominent spike
         clean = np.zeros(20)
         self.assertEqual(detect_outliers_iqr(clean), [])
@@ -162,6 +162,21 @@ class CalibrationTests(unittest.TestCase):
         self.assertEqual(detect_outliers(spiked, method="grubbs"), [10])
         with self.assertRaises(ValueError):
             detect_outliers(spiked, method="unknown")
+        self.assertAlmostEqual(_grubbs_critical_value(20, 0.05), 2.708246, places=5)
+        self.assertAlmostEqual(_grubbs_critical_value(100, 0.05), 3.384083, places=5)
+
+    def test_grubbs_critical_value_detects_residual_above_exact_cutoff(self):
+        times = np.arange(20, dtype=float)
+        error = np.tile([-1.0, 1.0], 10)
+        error[10] = 4.0
+        fit = fit_line(times, times + error, outlier_method="grubbs", outlier_threshold=0.05)
+        self.assertEqual(fit["outlier_count"], 1)
+        self.assertEqual(fit["outlier_indices"], [10])
+
+    def test_outlier_thresholds_reject_invalid_values(self):
+        for method, threshold in [("grubbs", 0), ("grubbs", 1), ("iqr", -1), ("iqr", float("nan"))]:
+            with self.subTest(method=method, threshold=threshold), self.assertRaises(ValueError):
+                analyze(self.path, density_mg_ul=1, outlier_method=method, outlier_threshold=threshold)
 
     def test_outlier_flagging_in_analyze_and_markdown(self):
         # Create a run where one mass reading is an outlier
@@ -199,4 +214,3 @@ class CalibrationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
