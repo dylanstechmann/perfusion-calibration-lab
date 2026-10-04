@@ -340,7 +340,7 @@ def _flow_uncertainty_budget(corrected_flow_ul_min, density_mg_ul, budget_compon
 
 def analyze(path, *, density_mg_ul, discard_seconds=0.0, seed=0, bootstrap_draws=2000,
             outlier_method="iqr", outlier_threshold=None, uncertainty_budget=None,
-            uncertainty_budget_sha256=None):
+            uncertainty_budget_sha256=None, measurement_record=None):
     if isinstance(density_mg_ul, bool) or not isinstance(density_mg_ul, (int, float)) or not np.isfinite(density_mg_ul) or density_mg_ul <= 0:
         raise ValueError("density_mg_ul must be finite and positive")
     if isinstance(discard_seconds, bool) or not isinstance(discard_seconds, (int, float)) or not np.isfinite(discard_seconds) or discard_seconds < 0:
@@ -373,6 +373,10 @@ def analyze(path, *, density_mg_ul, discard_seconds=0.0, seed=0, bootstrap_draws
     path = Path(path)
     # Parse and hash one snapshot so the reported digest identifies the fitted data.
     input_bytes = path.read_bytes()
+    source_qualification = {"status": "not_provided", "limits": ["No measured-data provenance record supplied; do not infer physical acquisition from numeric CSV contents."]}
+    if measurement_record is not None:
+        from perfusioncal.measurement_record import qualify_measurements
+        source_qualification = qualify_measurements(input_bytes, measurement_record, density_mg_ul=density_mg_ul)
     runs = {}
     with io.StringIO(input_bytes.decode("utf-8-sig"), newline="") as handle:
         reader = csv.DictReader(handle)
@@ -478,6 +482,7 @@ def analyze(path, *, density_mg_ul, discard_seconds=0.0, seed=0, bootstrap_draws
             "configuration": {"density_mg_ul": density_mg_ul, "discard_seconds": discard_seconds,
                               "seed": seed, "bootstrap_draws": bootstrap_draws,
                               "outlier_method": outlier_method, "outlier_threshold": outlier_threshold},
+            "measurement_source_qualification": source_qualification,
             "measurement_uncertainty_budget": {
                 "status": "not_provided" if normalized_budget is None else "provided",
                 "input_sha256": uncertainty_budget_sha256,
@@ -514,6 +519,13 @@ def markdown(report):
         ci = "unavailable (<3 runs)" if interval is None else f"[{interval[0]:.3f}, {interval[1]:.3f}]"
         lines.append(f"| {row['target_flow_ul_min']:.3f} | {row['n_runs']} | {row['mean_flow_ul_min']:.3f} | "
                      f"{row['mean_error_percent']:.2f} | {sd} | {ci} |")
+    qualification = report.get("measurement_source_qualification", {"status": "not_provided"})
+    lines.extend(["", "## Measurement source", "", f"Source intake status: {qualification['status']}."])
+    if "source_url" in qualification:
+        lines.append(f"Source: {qualification['source_url']}. License: {qualification['license']}.")
+        lines.append(f"Scope: {qualification['scope']}. Complete declared source traces: {qualification['n_complete_source_traces']}.")
+        lines.append(f"Measurement record SHA-256: `{qualification['record_sha256']}`.")
+    lines.extend(qualification.get("limits", []))
     budget = report["measurement_uncertainty_budget"]
     lines.extend(["", "## Measurement-system uncertainty", ""])
     lines.append(f"Budget status: {budget['status']}. Input SHA-256: `{budget['input_sha256'] or 'not supplied'}`.")

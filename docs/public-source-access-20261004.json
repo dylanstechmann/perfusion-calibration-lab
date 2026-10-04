@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "kind": "source-page-access-probe-not-measurement-data",
+  "catalog_sha256": "02b5d89db0f2efd4cbcc555cab36db487bb79cc9ef4454f53666e05032f4d78a",
+  "probes": [
+    {
+      "id": "jung2025-lego",
+      "url": "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0326938",
+      "measurement_data_acquired": false,
+      "http_status": 200,
+      "final_url": "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0326938",
+      "content_type": "text/html;charset=UTF-8",
+      "snapshot_sha256": "5e6027e69a828ab95970feafdb6e15e00e86e51137aba709199ecb87156cdc95",
+      "snapshot_bytes": 266477,
+      "snapshot_file": "jung2025-lego.snapshot"
+    },
+    {
+      "id": "ha2026-spin-coater",
+      "url": "https://zenodo.org/records/21704252",
+      "measurement_data_acquired": false,
+      "http_status": 200,
+      "final_url": "https://zenodo.org/records/21704252",
+      "content_type": "text/html; charset=utf-8",
+      "snapshot_sha256": "5988b820442f13ec5353994416b32b9623d9984439fe2496fb9805296347c060",
+      "snapshot_bytes": 93418,
+      "snapshot_file": "ha2026-spin-coater.snapshot"
+    }
+  ],
+  "limits": [
+    "Page hashes identify these snapshots only; dynamic HTML can change on a repeat fetch.",
+    "HTTP success can include a robot-check page and does not establish measurement-file availability.",
+    "The curated catalog records source eligibility; this script probes page access and hashes bytes only."
+  ]
+}

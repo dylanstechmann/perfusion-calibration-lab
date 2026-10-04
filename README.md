@@ -158,3 +158,7 @@ perfusioncal demo --seed 0 --out artifacts/new_synthetic_measurements.csv
 ```
 
 The fixture and code are MIT licensed; no personal or biological data are used.
+
+## Measured data provenance
+
+See the [public-source audit and executable intake contract](docs/MEASURED_DATA_INTAKE.md). The 2026-10-04 audit acquired zero eligible raw datasets. Source-linked intake checks preserve hashes and reject unsupported measurement origins or split-source replicates; they do not establish hardware or biological validation.

@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "kind": "public-source-qualification-not-a-measurement-dataset",
+  "audit_date": "2026-10-04",
+  "n_eligible_raw_datasets_acquired": 0,
+  "sources": [
+    {
+      "id": "jung2025-lego",
+      "url": "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0326938",
+      "doi": "10.1371/journal.pone.0326938",
+      "license_observation": "Article is CC BY; an independently downloadable raw trace license was not established.",
+      "measurement_description": "Water mass on RADWAG AS 60/220.R2 balance every 30 s for 5 min; three repeats at each of nine syringe-volume/motor-speed combinations. Paper analyzes averaged readings with water density assumed 1 g/mL.",
+      "eligibility": "ineligible_as_acquired",
+      "reasons": [
+        "Public article reports means/curves; individual source trace identities and machine-readable mass/time rows were not acquired.",
+        "Motor settings 1, 5 and 9 are not recorded volumetric target_flow_ul_min setpoints.",
+        "The paper density assumption is not a measured density for these conditions."
+      ],
+      "raw_measurement_sha256": null
+    },
+    {
+      "id": "ha2026-spin-coater",
+      "url": "https://zenodo.org/records/21704252",
+      "doi": "10.5281/zenodo.21704252",
+      "license_observation": "Record description says data/documentation CC BY-SA 4.0; files explicitly restricted.",
+      "measurement_description": "Record advertises gravimetric validation data for a dispensing add-on, version v1.0.3.",
+      "eligibility": "ineligible_as_acquired",
+      "reasons": [
+        "Files are restricted; no measurement file was acquired.",
+        "Associated GitHub URL returned 404 in the unauthenticated check.",
+        "Individual trace identities, units and density provenance could not be inspected."
+      ],
+      "related_repository": "https://github.com/hyu-madelab/spin-coater-dispensing-geometry-addon",
+      "raw_measurement_sha256": null
+    }
+  ],
+  "decision": "No raw dataset acquired satisfies this repository measurement contract. No public-data fit or physical/biological validation was performed.",
+  "method": "Inspect primary article/repository methods, data availability and publicly listed files; refuse figure means, synthetic/model outputs, unidentified biological replicates, restricted files and incompatible units/geometry. This is a bounded source audit, not proof that no suitable public dataset exists."
+}

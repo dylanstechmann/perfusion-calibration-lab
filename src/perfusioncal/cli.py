@@ -57,6 +57,8 @@ def main(argv=None):
                      help="outlier threshold factor (default: 1.5 for iqr, 0.05 for grubbs)")
     run.add_argument("--uncertainty-budget", default=None,
                      help="source-linked JSON standard-uncertainty budget; components are separate from run resampling")
+    run.add_argument("--measurement-record", default=None,
+                     help="optional direct-measurement provenance JSON; rejects synthetic, incomplete or split-source records")
     run.add_argument("--out", required=True, help="new output directory")
     args = parser.parse_args(argv)
     try:
@@ -84,6 +86,7 @@ def main(argv=None):
                 outlier_threshold=args.outlier_threshold,
                 uncertainty_budget=budget_document,
                 uncertainty_budget_sha256=budget_sha256,
+                measurement_record=args.measurement_record,
             )
             report["environment"] = {"python": platform.python_version(), "numpy": np.__version__,
                                       "perfusioncal": __version__}
