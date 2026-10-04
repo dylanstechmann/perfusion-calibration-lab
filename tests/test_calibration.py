@@ -1,3 +1,4 @@
+import copy
 import csv
 import hashlib
 import json
@@ -86,6 +87,49 @@ class CalibrationTests(unittest.TestCase):
         )
         self.assertEqual(len(uncertainty["corrections_applied"]), 4)
         self.assertIsNone(target["mean_flow_ci95"])
+
+    def test_uncertainty_contributions_match_independent_finite_differences(self):
+        # A substantial non-unit gain makes multiply/divide errors visible.
+        self.write_rows([["one", t, 14 + 2 * t, 60] for t in [0, 1, 2, 3]])
+        density = 2.0
+        epsilon = 1e-6
+        for gain_correction in [0.25, -0.4]:
+            budget = self.complete_budget()
+            budget["components"]["balance_gain"]["correction"] = gain_correction
+            report = analyze(self.path, density_mg_ul=density, uncertainty_budget=budget)
+            contributions = report["targets"][0]["measurement_system_uncertainty"]["component_contributions_ul_min"]
+            for name, component in budget["components"].items():
+                flows = []
+                for direction in [-1, 1]:
+                    perturbed = copy.deepcopy(budget)
+                    perturbed_density = density
+                    if name == "density":
+                        perturbed_density += direction * epsilon
+                    else:
+                        perturbed["components"][name]["correction"] += direction * epsilon
+                    result = analyze(self.path, density_mg_ul=perturbed_density, uncertainty_budget=perturbed)
+                    flows.append(result["targets"][0]["mean_flow_after_available_corrections_ul_min"])
+                sensitivity = abs(flows[1] - flows[0]) / (2 * epsilon)
+                expected = sensitivity * component["standard_uncertainty"]
+                with self.subTest(gain=gain_correction, component=name):
+                    self.assertAlmostEqual(contributions[name], expected, delta=expected * 1e-7)
+
+    def test_corrected_bootstrap_uses_the_same_run_resamples(self):
+        rows = [[f"run-{i}", t, 5 + slope * t, 60]
+                for i, slope in enumerate([0.8, 1.0, 1.3, 1.7, 2.1])
+                for t in [0, 1, 2, 3]]
+        self.write_rows(rows)
+        budget = self.complete_budget()
+        budget["components"]["balance_gain"]["correction"] = 0.25
+        report = analyze(self.path, density_mg_ul=2, uncertainty_budget=budget,
+                         bootstrap_draws=137, seed=31)
+        target = report["targets"][0]
+        expected = [(bound + (0.2 - 0.1) * 60 / 2) * 1.003 / 1.25
+                    for bound in target["mean_flow_ci95"]]
+        np.testing.assert_allclose(target["mean_flow_after_available_corrections_ci95"], expected,
+                                   rtol=1e-13, atol=1e-13)
+        uncorrected = analyze(self.path, density_mg_ul=2, bootstrap_draws=137, seed=31)["targets"][0]
+        self.assertEqual(uncorrected["mean_flow_ci95"], uncorrected["mean_flow_after_available_corrections_ci95"])
 
     def test_partial_and_unavailable_budgets_do_not_claim_combined_uncertainty(self):
         self.write_rows([["one", t, 2 * t, 60] for t in [0, 1, 2, 3]])

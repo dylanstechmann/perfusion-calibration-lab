@@ -292,7 +292,8 @@ def _flow_uncertainty_budget(corrected_flow_ul_min, density_mg_ul, budget_compon
     timing_scale = 1.0 + budget_components["timing_scale"].get("correction", 0.0)
     flow_without_gain = corrected_flow_ul_min / balance_gain
     flow_without_timing = corrected_flow_ul_min / timing_scale
-    rate_sensitivity = 60.0 * balance_gain * timing_scale / density_mg_ul
+    # Both rate terms enter Q = 60*(slope - drift + evaporation)*timing/(density*gain).
+    rate_sensitivity = 60.0 * timing_scale / (density_mg_ul * balance_gain)
     for name, component in budget_components.items():
         if component["status"] != "measured":
             complete = False
@@ -441,11 +442,14 @@ def analyze(path, *, density_mg_ul, discard_seconds=0.0, seed=0, bootstrap_draws
         interval = None
         corrected_interval = None
         if len(flows) >= 3:
-            means = np.array([rng.choice(flows, size=len(flows), replace=True).mean()
-                              for _ in range(bootstrap_draws)])
+            # Resample the same independent runs for apparent and corrected flow.
+            # Available corrections are a fixed affine transform, not new noise.
+            means, corrected_means = [], []
+            for _ in range(bootstrap_draws):
+                indices = rng.choice(len(flows), size=len(flows), replace=True)
+                means.append(flows[indices].mean())
+                corrected_means.append(corrected_flows[indices].mean())
             interval = np.quantile(means, [0.025, 0.975]).tolist()
-            corrected_means = np.array([rng.choice(corrected_flows, size=len(corrected_flows), replace=True).mean()
-                                        for _ in range(bootstrap_draws)])
             corrected_interval = np.quantile(corrected_means, [0.025, 0.975]).tolist()
         mean_corrected_flow = float(corrected_flows.mean())
         correction_count = sum(

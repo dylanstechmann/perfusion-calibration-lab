@@ -120,6 +120,16 @@ Measured components other than density also require a point `correction`:
 - `timing_scale`: fractional excess/deficit in indicated elapsed time divided
   by true elapsed time. The flow calculation multiplies by `1 + correction`.
 
+The correction model is
+`Q = 60 * (mass_rate - drift + evaporation) * timing_scale / (density * balance_gain)`,
+where each scale is `1 + correction`. Drift and evaporation rates must use the
+same indicated mass/time units as the trace. Their first-order sensitivity is
+`60 * timing_scale / (density * balance_gain)`; the gain divides both the point
+flow and those uncertainty contributions. Regression tests compare every named
+sensitivity against independent finite differences at non-unit gain values.
+Apparent and corrected bootstrap intervals use the same sampled runs, preserving
+the exact affine relation between them without adding Monte Carlo differences.
+
 For the two scale terms, `standard_uncertainty` and `correction` are fractional
 values (for example, `0.001` means 0.1%). Density uncertainty is in mg/µL;
 slope-drift and evaporation uncertainty are in mg/s. The report shows
