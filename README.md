@@ -56,6 +56,10 @@ run01,60,56.8,50
   measured relative to the first timestamp of each run. Choose it before analysis.
 
 Do not label slices of a single trace as independent repeated runs.
+[`examples/physical_measurements.template.csv`](examples/physical_measurements.template.csv)
+is a blank header-only capture template; see
+[`examples/PHYSICAL_MEASUREMENT_RECORDING.md`](examples/PHYSICAL_MEASUREMENT_RECORDING.md)
+for source records to retain alongside an actual trace.
 
 ## Calculation
 
@@ -86,14 +90,53 @@ silently discarding readings.
 Options:
 - `--outlier-method {iqr, grubbs}` (default: `iqr`)
 - `--outlier-threshold` (default: 1.5 for IQR, 0.05 for Grubbs)
+- `--uncertainty-budget FILE` (optional source-linked standard-uncertainty budget)
 
-Intervals do not include systematic uncertainty from fluid density, the balance,
-evaporation, retained droplets, collection losses or the timing instrument.
+Run-bootstrap intervals do not include systematic uncertainty from fluid density,
+the balance, evaporation, retained droplets, collection losses or the timing instrument.
 `flow_if_constant_evaporation` only shifts an apparent flow by a constant
 mass-loss rate you supply. It does not estimate that rate.
 Define a measurement procedure and an uncertainty budget before making a
 hardware accuracy claim. This software has been tested on constructed traces;
 no physical pump has been calibrated in this repository.
+
+The optional JSON budget uses the format in
+[`examples/measurement_uncertainty_budget.example.json`](examples/measurement_uncertainty_budget.example.json).
+It records standard uncertainty for density, balance gain, balance slope drift,
+evaporation rate, and timing scale. Components without supporting measurements
+must say `not_available` with a reason. For measured components, `source_record`
+identifies the certificate, blank run, or other measurement record. The density
+point value still comes from `--density-mg-ul`; the budget records its standard
+uncertainty.
+
+Measured components other than density also require a point `correction`:
+
+- `balance_gain`: fractional excess/deficit in indicated mass divided by true
+  mass. The flow calculation divides by `1 + correction`.
+- `balance_slope_drift`: additive blank-trace bias in mg/s. The calculation
+  subtracts it from the fitted mass rate.
+- `evaporation_rate`: nonnegative matched-blank mass loss in mg/s. The
+  calculation adds it using `flow_if_constant_evaporation`.
+- `timing_scale`: fractional excess/deficit in indicated elapsed time divided
+  by true elapsed time. The flow calculation multiplies by `1 + correction`.
+
+For the two scale terms, `standard_uncertainty` and `correction` are fractional
+values (for example, `0.001` means 0.1%). Density uncertainty is in mg/µL;
+slope-drift and evaporation uncertainty are in mg/s. The report shows
+flow-equivalent contributions and combines them only when all five components
+are measured and declared independent. This first-order combined value is a
+standard uncertainty, not a 95% interval. Correlated components need covariance
+propagation, which this tool does not implement. Corrections are applied only
+when the corresponding component is marked `measured`; the original apparent
+flow and its run-bootstrap interval remain visible. Neither interval covers
+unlisted collection losses.
+
+For example, a `balance_gain` entry with `correction: 0.002` represents a
+measured indication gain of 1.002, which the calculation divides out. A
+`standard_uncertainty` of `0.0001` is the uncertainty in that dimensionless
+gain. Replace `source_record` with the identifier for the actual calibration
+record. Numeric values in this example description are illustrative, not
+calibration data.
 
 This is analysis for research instruments, not medical infusion control. It
 produces no motor commands and does not automatically change a pump calibration.

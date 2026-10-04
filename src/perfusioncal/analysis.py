@@ -195,8 +195,151 @@ def flow_if_constant_evaporation(apparent_flow_ul_min, evaporation_mg_s, density
     }
 
 
+_UNCERTAINTY_COMPONENTS = {
+    "density": "mg/uL",
+    "balance_gain": "relative_fraction",
+    "balance_slope_drift": "mg/s",
+    "evaporation_rate": "mg/s",
+    "timing_scale": "relative_fraction",
+}
+
+
+def validate_uncertainty_budget(budget):
+    """Validate a source-linked, independent-standard-uncertainty budget."""
+    if not isinstance(budget, dict) or set(budget) != {
+        "schema_version", "combination_assumption", "components"
+    }:
+        raise ValueError("uncertainty budget needs schema_version, combination_assumption, and components")
+    if type(budget["schema_version"]) is not int or budget["schema_version"] != 1:
+        raise ValueError("unsupported uncertainty budget schema_version")
+    if budget["combination_assumption"] != "independent_standard_uncertainties":
+        raise ValueError("only independent_standard_uncertainties can be combined")
+    components = budget["components"]
+    if not isinstance(components, dict) or set(components) != set(_UNCERTAINTY_COMPONENTS):
+        raise ValueError("uncertainty budget must declare all five named components")
+
+    normalized = {}
+    for name, unit in _UNCERTAINTY_COMPONENTS.items():
+        component = components[name]
+        if not isinstance(component, dict):
+            raise ValueError(f"uncertainty component {name} must be an object")
+        status = component.get("status")
+        if status == "not_available":
+            if set(component) != {"status", "reason"}:
+                raise ValueError(f"unavailable component {name} needs only status and reason")
+            reason = component.get("reason")
+            if not isinstance(reason, str) or not reason.strip():
+                raise ValueError(f"unavailable component {name} needs a nonblank reason")
+            normalized[name] = {"status": status, "unit": unit, "reason": reason.strip()}
+            continue
+        expected_keys = {"status", "standard_uncertainty", "source_record"}
+        if name != "density":
+            expected_keys.add("correction")
+        if status != "measured" or set(component) != expected_keys:
+            raise ValueError(f"component {name} must be measured with uncertainty and source, or not_available")
+        value = component["standard_uncertainty"]
+        source = component["source_record"]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not np.isfinite(value) or value <= 0:
+            raise ValueError(f"component {name} standard_uncertainty must be finite and positive")
+        if not isinstance(source, str) or not source.strip():
+            raise ValueError(f"measured component {name} needs a nonblank source_record")
+        correction = component.get("correction")
+        if name != "density":
+            if (isinstance(correction, bool) or not isinstance(correction, (int, float))
+                    or not np.isfinite(correction)):
+                raise ValueError(f"component {name} correction must be finite")
+            if name in {"balance_gain", "timing_scale"} and correction <= -1:
+                raise ValueError(f"component {name} correction must keep its scale factor positive")
+            if name == "evaporation_rate" and correction < 0:
+                raise ValueError("evaporation_rate correction must be nonnegative")
+        normalized[name] = {
+            "status": status,
+            "unit": unit,
+            "standard_uncertainty": float(value),
+            "source_record": source.strip(),
+        }
+        if name != "density":
+            normalized[name]["correction"] = float(correction)
+    return {
+        "schema_version": 1,
+        "combination_assumption": "independent_standard_uncertainties",
+        "components": normalized,
+    }
+
+
+def _flow_after_corrections(mass_rate_mg_s, density_mg_ul, budget_components):
+    balance_bias = budget_components["balance_slope_drift"].get("correction", 0.0)
+    evaporation = budget_components["evaporation_rate"].get("correction", 0.0)
+    balance_gain = 1.0 + budget_components["balance_gain"].get("correction", 0.0)
+    timing_scale = 1.0 + budget_components["timing_scale"].get("correction", 0.0)
+    apparent_flow = (mass_rate_mg_s - balance_bias) * 60.0 / density_mg_ul
+    evaporation_result = flow_if_constant_evaporation(apparent_flow, evaporation, density_mg_ul)
+    # balance_gain is indicated mass / true mass, so remove its bias by dividing;
+    # timing_scale is indicated elapsed time / true elapsed time, so multiply.
+    corrected_flow = evaporation_result["implied_delivered_flow_ul_min"] * timing_scale / balance_gain
+    applied = [
+        name for name in ("balance_slope_drift", "evaporation_rate", "balance_gain", "timing_scale")
+        if budget_components[name]["status"] == "measured"
+    ]
+    return float(corrected_flow), applied
+
+
+def _flow_uncertainty_budget(corrected_flow_ul_min, density_mg_ul, budget_components):
+    """Propagate listed components without mixing them into the run bootstrap."""
+    contributions = {}
+    complete = True
+    balance_gain = 1.0 + budget_components["balance_gain"].get("correction", 0.0)
+    timing_scale = 1.0 + budget_components["timing_scale"].get("correction", 0.0)
+    flow_without_gain = corrected_flow_ul_min / balance_gain
+    flow_without_timing = corrected_flow_ul_min / timing_scale
+    rate_sensitivity = 60.0 * balance_gain * timing_scale / density_mg_ul
+    for name, component in budget_components.items():
+        if component["status"] != "measured":
+            complete = False
+            contributions[name] = None
+            continue
+        standard_uncertainty = component["standard_uncertainty"]
+        if name == "density":
+            contribution = abs(corrected_flow_ul_min) * standard_uncertainty / density_mg_ul
+        elif name == "balance_gain":
+            contribution = abs(flow_without_gain) * standard_uncertainty
+        elif name == "timing_scale":
+            contribution = abs(flow_without_timing) * standard_uncertainty
+        else:
+            contribution = rate_sensitivity * standard_uncertainty
+        contributions[name] = float(contribution)
+    combined = None
+    if complete:
+        combined = float(math.sqrt(sum(value * value for value in contributions.values())))
+    if not any(component["status"] == "measured" for component in budget_components.values()):
+        status = "unavailable"
+    elif complete:
+        status = "quantified_for_declared_components"
+    else:
+        status = "partial"
+    return {
+        "status": status,
+        "combined_standard_uncertainty_ul_min": combined,
+        "component_contributions_ul_min": contributions,
+        "unquantified_components": [
+            name for name, component in budget_components.items() if component["status"] != "measured"
+        ],
+        "combination_assumption": "independent_standard_uncertainties",
+        "note": (
+            "First-order contributions around the flow after available source-linked corrections. "
+            "This is separate from run resampling and excludes unlisted loss mechanisms."
+        ),
+        "flow_after_corrections_ul_min": float(corrected_flow_ul_min),
+        "corrections_applied": [
+            name for name in ("balance_slope_drift", "evaporation_rate", "balance_gain", "timing_scale")
+            if budget_components[name]["status"] == "measured"
+        ],
+    }
+
+
 def analyze(path, *, density_mg_ul, discard_seconds=0.0, seed=0, bootstrap_draws=2000,
-            outlier_method="iqr", outlier_threshold=None):
+            outlier_method="iqr", outlier_threshold=None, uncertainty_budget=None,
+            uncertainty_budget_sha256=None):
     if isinstance(density_mg_ul, bool) or not isinstance(density_mg_ul, (int, float)) or not np.isfinite(density_mg_ul) or density_mg_ul <= 0:
         raise ValueError("density_mg_ul must be finite and positive")
     if isinstance(discard_seconds, bool) or not isinstance(discard_seconds, (int, float)) or not np.isfinite(discard_seconds) or discard_seconds < 0:
@@ -210,6 +353,22 @@ def analyze(path, *, density_mg_ul, discard_seconds=0.0, seed=0, bootstrap_draws
             raise ValueError("IQR threshold must be nonnegative; Grubbs alpha must lie strictly between 0 and 1")
     if not isinstance(bootstrap_draws, int) or bootstrap_draws < 100:
         raise ValueError("use at least 100 bootstrap draws")
+    normalized_budget = (
+        None if uncertainty_budget is None else validate_uncertainty_budget(uncertainty_budget)
+    )
+    if uncertainty_budget_sha256 is not None and (
+        not isinstance(uncertainty_budget_sha256, str)
+        or len(uncertainty_budget_sha256) != 64
+        or any(char not in "0123456789abcdef" for char in uncertainty_budget_sha256.lower())
+    ):
+        raise ValueError("uncertainty_budget_sha256 must be a SHA-256 hex digest")
+    budget_components = (
+        normalized_budget["components"] if normalized_budget is not None else {
+            name: {"status": "not_available", "unit": unit,
+                   "reason": "No measurement uncertainty budget was supplied."}
+            for name, unit in _UNCERTAINTY_COMPONENTS.items()
+        }
+    )
     path = Path(path)
     # Parse and hash one snapshot so the reported digest identifies the fitted data.
     input_bytes = path.read_bytes()
@@ -243,6 +402,9 @@ def analyze(path, *, density_mg_ul, discard_seconds=0.0, seed=0, bootstrap_draws
         fit = fit_line(selected[:, 0], selected[:, 1], outlier_method=outlier_method, outlier_threshold=outlier_threshold)
         target = float(array[0, 2])
         flow = fit["mass_rate_mg_s"] * 60.0 / density_mg_ul
+        corrected_flow, corrections_applied = _flow_after_corrections(
+            fit["mass_rate_mg_s"], density_mg_ul, budget_components
+        )
         drift = None
         if len(selected) >= 6 and abs(fit["mass_rate_mg_s"]) > 1e-12:
             half = len(selected) // 2
@@ -252,6 +414,8 @@ def analyze(path, *, density_mg_ul, discard_seconds=0.0, seed=0, bootstrap_draws
         flags = []
         if flow <= 0:
             flags.append("nonpositive_measured_flow")
+        if corrected_flow <= 0 < flow:
+            flags.append("nonpositive_flow_after_available_corrections")
         if fit["r_squared"] is None or fit["r_squared"] < 0.95:
             flags.append("inspect_nonlinearity_or_noise")
         if drift is not None and abs(drift) > 20:
@@ -263,6 +427,8 @@ def analyze(path, *, density_mg_ul, discard_seconds=0.0, seed=0, bootstrap_draws
                              for i in fit["outlier_indices"]]
         result.append({"run_id": run_id, **fit, "target_flow_ul_min": target,
                        "measured_flow_ul_min": flow, "error_percent": 100 * (flow - target) / target,
+                       "flow_after_available_corrections_ul_min": corrected_flow,
+                       "corrections_applied": corrections_applied,
                        "late_vs_early_slope_change_percent": drift,
                        "outlier_times_s": outlier_times, "outlier_residuals_mg": outlier_residuals,
                        "flags": flags})
@@ -271,28 +437,61 @@ def analyze(path, *, density_mg_ul, discard_seconds=0.0, seed=0, bootstrap_draws
     for target in sorted({r["target_flow_ul_min"] for r in result}):
         subset = [r for r in result if r["target_flow_ul_min"] == target]
         flows = np.array([r["measured_flow_ul_min"] for r in subset])
+        corrected_flows = np.array([r["flow_after_available_corrections_ul_min"] for r in subset])
         interval = None
+        corrected_interval = None
         if len(flows) >= 3:
             means = np.array([rng.choice(flows, size=len(flows), replace=True).mean()
                               for _ in range(bootstrap_draws)])
             interval = np.quantile(means, [0.025, 0.975]).tolist()
+            corrected_means = np.array([rng.choice(corrected_flows, size=len(corrected_flows), replace=True).mean()
+                                        for _ in range(bootstrap_draws)])
+            corrected_interval = np.quantile(corrected_means, [0.025, 0.975]).tolist()
+        mean_corrected_flow = float(corrected_flows.mean())
+        correction_count = sum(
+            budget_components[name]["status"] == "measured"
+            for name in ("balance_gain", "balance_slope_drift", "evaporation_rate", "timing_scale")
+        )
+        correction_status = (
+            "none_available" if correction_count == 0
+            else "all_declared_corrections_available" if correction_count == 4
+            else "partial"
+        )
         summaries.append({"target_flow_ul_min": target, "n_runs": len(flows),
                           "mean_flow_ul_min": float(flows.mean()),
                           "sd_flow_ul_min": None if len(flows) < 2 else float(flows.std(ddof=1)),
                           "mean_error_percent": 100 * float(flows.mean() - target) / target,
                           "mean_flow_ci95": interval,
+                          "mean_flow_after_available_corrections_ul_min": mean_corrected_flow,
+                          "mean_flow_after_available_corrections_ci95": corrected_interval,
+                          "correction_status": correction_status,
+                          "measurement_system_uncertainty": _flow_uncertainty_budget(
+                              mean_corrected_flow, density_mg_ul, budget_components
+                          ),
                           "flagged_runs": [r["run_id"] for r in subset if r["flags"]],
                           "outlier_runs": [r["run_id"] for r in subset if r["outlier_count"] > 0]})
     return {"schema_version": 1, "input_sha256": hashlib.sha256(input_bytes).hexdigest(),
             "configuration": {"density_mg_ul": density_mg_ul, "discard_seconds": discard_seconds,
                               "seed": seed, "bootstrap_draws": bootstrap_draws,
                               "outlier_method": outlier_method, "outlier_threshold": outlier_threshold},
+            "measurement_uncertainty_budget": {
+                "status": "not_provided" if normalized_budget is None else "provided",
+                "input_sha256": uncertainty_budget_sha256,
+                "combination_assumption": (
+                    None if normalized_budget is None
+                    else normalized_budget["combination_assumption"]
+                ),
+                "components": budget_components,
+            },
             "runs": result, "targets": summaries,
             "notes": ["Offline research analysis. No hardware commands are generated.",
                       "This report alone is not a physical pump calibration or acceptance decision.",
                       "Intervals resample independent run slopes, not serially correlated readings.",
                       "Fewer than three runs: no interval. Small repeat counts give unstable intervals.",
-                      "Density, balance calibration, evaporation and collection losses are not included in uncertainty.",
+                      "The run-bootstrap interval excludes density, balance, evaporation and timing uncertainty.",
+                      "The optional uncertainty budget applies only source-linked corrections that are explicitly marked measured.",
+                      "Correlated uncertainty components require covariance propagation; this tool only combines components declared independent.",
+                      "Retained droplets, collection losses and other unlisted effects are not quantified.",
                       "R-squared <0.95 and >20% half-run drift are diagnostic flags, not acceptance standards.",
                       "IQR and Grubbs outlier flags do not alter regression weights; Grubbs' independent-normal assumptions may not hold for correlated linear-fit residuals.",
                       "Flagged runs remain in summaries; inspect them before interpreting mean flow."]}
@@ -311,6 +510,43 @@ def markdown(report):
         ci = "unavailable (<3 runs)" if interval is None else f"[{interval[0]:.3f}, {interval[1]:.3f}]"
         lines.append(f"| {row['target_flow_ul_min']:.3f} | {row['n_runs']} | {row['mean_flow_ul_min']:.3f} | "
                      f"{row['mean_error_percent']:.2f} | {sd} | {ci} |")
+    budget = report["measurement_uncertainty_budget"]
+    lines.extend(["", "## Measurement-system uncertainty", ""])
+    lines.append(f"Budget status: {budget['status']}. Input SHA-256: `{budget['input_sha256'] or 'not supplied'}`.")
+    if budget["combination_assumption"]:
+        lines.append(f"Combination assumption: `{budget['combination_assumption']}`.")
+    lines.append("Component contributions are separate from run-bootstrap intervals. The combined value is a standard uncertainty, not a 95% interval.")
+    lines.append("")
+    component_names = list(budget["components"])
+    lines.append("| Target (µL/min) | " + " | ".join(component_names) + " | Combined standard uncertainty (µL/min) | Status | Unquantified |")
+    lines.append("|---:|" + "---:|" * len(component_names) + "---:|---|---|")
+    for row in report["targets"]:
+        uncertainty = row["measurement_system_uncertainty"]
+        combined = uncertainty["combined_standard_uncertainty_ul_min"]
+        combined_text = "unavailable" if combined is None else f"{combined:.4f}"
+        missing = ", ".join(uncertainty["unquantified_components"]) or "none"
+        component_values = [
+            "unavailable" if uncertainty["component_contributions_ul_min"][name] is None
+            else f"{uncertainty['component_contributions_ul_min'][name]:.4f}"
+            for name in component_names
+        ]
+        lines.append(
+            f"| {row['target_flow_ul_min']:.3f} | " + " | ".join(component_values)
+            + f" | {combined_text} | {uncertainty['status']} | {missing} |"
+        )
+    lines.extend(["", "## Flow after available corrections", "",
+                  "Uncorrected measured flow remains in the main summary above. This table applies only source-linked corrections marked `measured`.",
+                  "",
+                  "| Target (µL/min) | Mean after available corrections (µL/min) | Correction status | 95% run-bootstrap interval after corrections (µL/min) |",
+                  "|---:|---:|---|---:|"])
+    for row in report["targets"]:
+        interval = row["mean_flow_after_available_corrections_ci95"]
+        ci = "unavailable (<3 runs)" if interval is None else f"[{interval[0]:.3f}, {interval[1]:.3f}]"
+        lines.append(
+            f"| {row['target_flow_ul_min']:.3f} | "
+            f"{row['mean_flow_after_available_corrections_ul_min']:.3f} | "
+            f"{row['correction_status']} | {ci} |"
+        )
     lines.extend(["", "## Run diagnostics", ""])
     for run in report["runs"]:
         flag_str = ', '.join(run['flags']) or 'no diagnostic flags'

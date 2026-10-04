@@ -8,7 +8,10 @@ from unittest.mock import patch
 
 import numpy as np
 
-from perfusioncal.analysis import analyze, flow_if_constant_evaporation, fit_line, markdown
+from perfusioncal.analysis import (
+    analyze, flow_if_constant_evaporation, fit_line, markdown,
+    validate_uncertainty_budget,
+)
 from perfusioncal.cli import main, write_demo
 
 
@@ -23,6 +26,97 @@ class CalibrationTests(unittest.TestCase):
             writer = csv.writer(handle)
             writer.writerow(["run_id", "time_s", "mass_mg", "target_flow_ul_min"])
             writer.writerows(rows)
+
+    @staticmethod
+    def complete_budget():
+        return {
+            "schema_version": 1,
+            "combination_assumption": "independent_standard_uncertainties",
+            "components": {
+                "density": {"status": "measured", "standard_uncertainty": 0.01,
+                            "source_record": "density-certificate"},
+                "balance_gain": {"status": "measured", "standard_uncertainty": 0.001,
+                                 "source_record": "balance-certificate", "correction": 0.002},
+                "balance_slope_drift": {"status": "measured", "standard_uncertainty": 0.001,
+                                        "source_record": "blank-study", "correction": 0.1},
+                "evaporation_rate": {"status": "measured", "standard_uncertainty": 0.002,
+                                     "source_record": "matched-blank", "correction": 0.2},
+                "timing_scale": {"status": "measured", "standard_uncertainty": 0.001,
+                                 "source_record": "timebase-certificate", "correction": 0.003},
+            },
+        }
+
+    def test_uncertainty_budget_requires_source_linked_finite_components(self):
+        root = Path(__file__).resolve().parents[1]
+        example = json.loads((root / "examples/measurement_uncertainty_budget.example.json").read_text())
+        normalized = validate_uncertainty_budget(example)
+        self.assertEqual(normalized["schema_version"], 1)
+        self.assertEqual(normalized["components"]["density"]["status"], "not_available")
+
+        bad = self.complete_budget()
+        bad["components"]["balance_gain"]["source_record"] = "  "
+        with self.assertRaisesRegex(ValueError, "source_record"):
+            validate_uncertainty_budget(bad)
+        bad = self.complete_budget()
+        bad["components"]["timing_scale"]["correction"] = -1
+        with self.assertRaisesRegex(ValueError, "positive"):
+            validate_uncertainty_budget(bad)
+        bad = self.complete_budget()
+        bad["components"]["density"]["standard_uncertainty"] = True
+        with self.assertRaisesRegex(ValueError, "finite and positive"):
+            validate_uncertainty_budget(bad)
+        bad = self.complete_budget()
+        bad["combination_assumption"] = "correlated"
+        with self.assertRaisesRegex(ValueError, "only independent"):
+            validate_uncertainty_budget(bad)
+
+    def test_uncertainty_budget_applies_corrections_and_combines_complete_components(self):
+        self.write_rows([["one", t, 2 * t, 60] for t in [0, 1, 2, 3]])
+        budget = self.complete_budget()
+        report = analyze(self.path, density_mg_ul=2, uncertainty_budget=budget)
+        target = report["targets"][0]
+        # (2.0 - 0.1 + 0.2) * 60/2 * 1.003 / 1.002
+        expected = (2.0 - 0.1 + 0.2) * 30 * 1.003 / 1.002
+        self.assertAlmostEqual(target["mean_flow_after_available_corrections_ul_min"], expected)
+        uncertainty = target["measurement_system_uncertainty"]
+        self.assertEqual(uncertainty["status"], "quantified_for_declared_components")
+        self.assertAlmostEqual(
+            uncertainty["combined_standard_uncertainty_ul_min"],
+            np.sqrt(sum(value ** 2 for value in uncertainty["component_contributions_ul_min"].values())),
+        )
+        self.assertEqual(len(uncertainty["corrections_applied"]), 4)
+        self.assertIsNone(target["mean_flow_ci95"])
+
+    def test_partial_and_unavailable_budgets_do_not_claim_combined_uncertainty(self):
+        self.write_rows([["one", t, 2 * t, 60] for t in [0, 1, 2, 3]])
+        partial = self.complete_budget()
+        partial["components"]["density"] = {
+            "status": "not_available", "reason": "no traceable density measurement"
+        }
+        result = analyze(self.path, density_mg_ul=2, uncertainty_budget=partial)
+        uncertainty = result["targets"][0]["measurement_system_uncertainty"]
+        self.assertEqual(uncertainty["status"], "partial")
+        self.assertIsNone(uncertainty["combined_standard_uncertainty_ul_min"])
+        self.assertIn("density", uncertainty["unquantified_components"])
+        no_budget = analyze(self.path, density_mg_ul=2)
+        self.assertEqual(no_budget["targets"][0]["measurement_system_uncertainty"]["status"], "unavailable")
+
+    def test_uncertainty_budget_cli_binds_bytes_and_renders_report(self):
+        self.write_rows([["one", t, 2 * t, 60] for t in [0, 1, 2, 3]])
+        budget_path = Path(self.tmp.name) / "budget.json"
+        budget_path.write_text(json.dumps(self.complete_budget()), encoding="utf-8")
+        output = Path(self.tmp.name) / "cli-output"
+        self.assertEqual(main(["analyze", str(self.path), "--density-mg-ul", "2",
+                               "--uncertainty-budget", str(budget_path), "--out", str(output)]), 0)
+        report = json.loads((output / "report.json").read_text(encoding="utf-8"))
+        self.assertEqual(report["measurement_uncertainty_budget"]["input_sha256"],
+                         hashlib.sha256(budget_path.read_bytes()).hexdigest())
+        text = (output / "REPORT.md").read_text(encoding="utf-8")
+        self.assertIn("standard uncertainty, not a 95% interval", text)
+        self.assertIn("quantified_for_declared_components", text)
+        self.assertEqual(main(["analyze", str(self.path), "--density-mg-ul", "2",
+                               "--uncertainty-budget", str(Path(__file__).resolve().parents[1] / "examples/measurement_uncertainty_budget.example.json"),
+                               "--out", str(Path(self.tmp.name) / "example-output")]), 0)
 
     def test_known_slope_with_tare_offset_and_density(self):
         self.write_rows([["one", t, 14 + 2 * t, 60] for t in [0, 1, 2, 3]])

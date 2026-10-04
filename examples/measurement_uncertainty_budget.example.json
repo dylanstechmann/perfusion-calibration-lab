@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "combination_assumption": "independent_standard_uncertainties",
+  "components": {
+    "density": {
+      "status": "not_available",
+      "reason": "The synthetic fixture sets density by construction; no physical fluid or temperature record exists."
+    },
+    "balance_gain": {
+      "status": "not_available",
+      "reason": "No balance calibration certificate or sensitivity uncertainty is supplied."
+    },
+    "balance_slope_drift": {
+      "status": "not_available",
+      "reason": "No blank-trace study quantifies time-varying balance bias in mg/s."
+    },
+    "evaporation_rate": {
+      "status": "not_available",
+      "reason": "No matched blank collection run measures evaporation under the collection conditions."
+    },
+    "timing_scale": {
+      "status": "not_available",
+      "reason": "No traceable timebase accuracy record is supplied."
+    }
+  }
+}

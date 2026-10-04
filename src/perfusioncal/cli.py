@@ -2,6 +2,7 @@
 
 import argparse
 import csv
+import hashlib
 import json
 from pathlib import Path
 import platform
@@ -12,6 +13,15 @@ import numpy as np
 
 from perfusioncal import __version__
 from perfusioncal.analysis import analyze, markdown
+
+
+def _unique_json_object(pairs):
+    obj = {}
+    for key, value in pairs:
+        if key in obj:
+            raise ValueError(f"duplicate uncertainty-budget JSON key: {key}")
+        obj[key] = value
+    return obj
 
 
 def write_demo(path, seed=0):
@@ -45,12 +55,26 @@ def main(argv=None):
                      help="outlier detection method on linear residuals (default: iqr)")
     run.add_argument("--outlier-threshold", type=float, default=None,
                      help="outlier threshold factor (default: 1.5 for iqr, 0.05 for grubbs)")
+    run.add_argument("--uncertainty-budget", default=None,
+                     help="source-linked JSON standard-uncertainty budget; components are separate from run resampling")
     run.add_argument("--out", required=True, help="new output directory")
     args = parser.parse_args(argv)
     try:
         if args.command == "demo":
             write_demo(args.out, args.seed)
         else:
+            budget_document = None
+            budget_sha256 = None
+            if args.uncertainty_budget:
+                budget_bytes = Path(args.uncertainty_budget).read_bytes()
+                budget_sha256 = hashlib.sha256(budget_bytes).hexdigest()
+                try:
+                    budget_text = budget_bytes.decode("utf-8-sig")
+                except UnicodeDecodeError as exc:
+                    raise ValueError("uncertainty budget must be UTF-8 JSON") from exc
+                budget_document = json.loads(
+                    budget_text, object_pairs_hook=_unique_json_object
+                )
             report = analyze(
                 args.csv,
                 density_mg_ul=args.density_mg_ul,
@@ -58,6 +82,8 @@ def main(argv=None):
                 seed=args.seed,
                 outlier_method=args.outlier_method,
                 outlier_threshold=args.outlier_threshold,
+                uncertainty_budget=budget_document,
+                uncertainty_budget_sha256=budget_sha256,
             )
             report["environment"] = {"python": platform.python_version(), "numpy": np.__version__,
                                       "perfusioncal": __version__}
