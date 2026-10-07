@@ -1,5 +1,7 @@
 # Perfusion Calibration Lab
 
+This is a personal hobby and learning project, developed with substantial assistance from AI coding tools.
+
 **Measure delivered flow from balance readings and compare independent runs.**
 An offline companion to [open-perfusion-rig](https://github.com/dylanstechmann/open-perfusion-rig):
 the pump repo predicts displacement from geometry; this repo analyzes what a
