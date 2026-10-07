@@ -71,6 +71,27 @@ flow_ul_min = 60 * mass_rate_mg_s / density_mg_ul
 error_percent = 100 * (flow_ul_min - target_flow_ul_min) / target_flow_ul_min
 ```
 
+### Where the density comes from
+
+Flow is a mass rate divided by a density, so the density is part of the result.
+Pass one of two things:
+
+- `--density-mg-ul` — the density of the fluid you actually pumped, at its
+  temperature. The report records that it was supplied and that nothing is known
+  about how it was determined.
+- `--water-temperature-c` — the published density of pure air-free water at that
+  temperature, from Tanaka et al., *Metrologia* **38** (2001) 301–309
+  ([doi:10.1088/0026-1394/38/4/3](https://doi.org/10.1088/0026-1394/38/4/3)),
+  valid 0–40 °C. The report carries the citation, the temperature, the density in
+  both mg/µL and kg/m³, and how much the familiar 1 mg/µL would have biased the
+  result — about +0.18% at 20 °C and +0.30% at 37 °C.
+
+The formula is for **pure water only**. Culture medium, buffered saline and
+gas-saturated water all differ, no air-buoyancy correction is applied (weighing
+in air biases apparent mass by roughly 0.1% for water), and a bath thermometer
+reading is not necessarily the temperature of fluid leaving the needle. Using the
+right density does not turn this analysis into a physical pump calibration.
+
 The free intercept accommodates a constant tare offset. Repeat runs at the same
 target are weighted equally. The report includes their sample standard deviation
 and a percentile bootstrap interval for mean flow, resampling entire runs.

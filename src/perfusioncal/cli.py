@@ -13,6 +13,7 @@ import numpy as np
 
 from perfusioncal import __version__
 from perfusioncal.analysis import analyze, markdown
+from perfusioncal.water import water_density_record
 
 
 def _unique_json_object(pairs):
@@ -48,7 +49,13 @@ def main(argv=None):
     demo.add_argument("--seed", type=int, default=0)
     run = sub.add_parser("analyze")
     run.add_argument("csv")
-    run.add_argument("--density-mg-ul", type=float, required=True, help="density for your fluid and temperature")
+    density = run.add_mutually_exclusive_group(required=True)
+    density.add_argument("--density-mg-ul", type=float,
+                         help="measured density of the fluid you actually pumped, at its temperature")
+    density.add_argument("--water-temperature-c", type=float,
+                         help=("use the published pure-water density at this temperature "
+                               "(Tanaka et al. 2001, 0-40 C) instead of supplying one; "
+                               "not valid for medium, saline or gas-saturated water"))
     run.add_argument("--discard-seconds", type=float, default=0)
     run.add_argument("--seed", type=int, default=0)
     run.add_argument("--outlier-method", choices=["iqr", "grubbs"], default="iqr",
@@ -77,9 +84,14 @@ def main(argv=None):
                 budget_document = json.loads(
                     budget_text, object_pairs_hook=_unique_json_object
                 )
+            density_provenance = None
+            density_mg_ul = args.density_mg_ul
+            if args.water_temperature_c is not None:
+                density_provenance = water_density_record(args.water_temperature_c)
+                density_mg_ul = density_provenance["density_mg_ul"]
             report = analyze(
                 args.csv,
-                density_mg_ul=args.density_mg_ul,
+                density_mg_ul=density_mg_ul,
                 discard_seconds=args.discard_seconds,
                 seed=args.seed,
                 outlier_method=args.outlier_method,
@@ -87,6 +99,7 @@ def main(argv=None):
                 uncertainty_budget=budget_document,
                 uncertainty_budget_sha256=budget_sha256,
                 measurement_record=args.measurement_record,
+                density_provenance=density_provenance,
             )
             report["environment"] = {"python": platform.python_version(), "numpy": np.__version__,
                                       "perfusioncal": __version__}

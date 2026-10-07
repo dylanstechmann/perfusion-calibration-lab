@@ -340,7 +340,8 @@ def _flow_uncertainty_budget(corrected_flow_ul_min, density_mg_ul, budget_compon
 
 def analyze(path, *, density_mg_ul, discard_seconds=0.0, seed=0, bootstrap_draws=2000,
             outlier_method="iqr", outlier_threshold=None, uncertainty_budget=None,
-            uncertainty_budget_sha256=None, measurement_record=None):
+            uncertainty_budget_sha256=None, measurement_record=None,
+            density_provenance=None):
     if isinstance(density_mg_ul, bool) or not isinstance(density_mg_ul, (int, float)) or not np.isfinite(density_mg_ul) or density_mg_ul <= 0:
         raise ValueError("density_mg_ul must be finite and positive")
     if isinstance(discard_seconds, bool) or not isinstance(discard_seconds, (int, float)) or not np.isfinite(discard_seconds) or discard_seconds < 0:
@@ -482,6 +483,14 @@ def analyze(path, *, density_mg_ul, discard_seconds=0.0, seed=0, bootstrap_draws
             "configuration": {"density_mg_ul": density_mg_ul, "discard_seconds": discard_seconds,
                               "seed": seed, "bootstrap_draws": bootstrap_draws,
                               "outlier_method": outlier_method, "outlier_threshold": outlier_threshold},
+            "fluid_density": density_provenance or {
+                "source": "supplied_by_caller",
+                "density_mg_ul": float(density_mg_ul),
+                "limitations": [
+                    "The density was supplied directly. This report does not record how it was "
+                    "determined, for which fluid, or at what temperature.",
+                ],
+            },
             "measurement_source_qualification": source_qualification,
             "measurement_uncertainty_budget": {
                 "status": "not_provided" if normalized_budget is None else "provided",
@@ -519,6 +528,20 @@ def markdown(report):
         ci = "unavailable (<3 runs)" if interval is None else f"[{interval[0]:.3f}, {interval[1]:.3f}]"
         lines.append(f"| {row['target_flow_ul_min']:.3f} | {row['n_runs']} | {row['mean_flow_ul_min']:.3f} | "
                      f"{row['mean_error_percent']:.2f} | {sd} | {ci} |")
+    density = report.get("fluid_density")
+    if density:
+        lines.extend(["", "## Fluid density", "",
+                      f"Density source: {density['source']}."])
+        if density["source"] == "tanaka_2001_pure_water":
+            lines.extend([
+                f"Pure air-free water at {density['temperature_c']:g} °C: "
+                f"{density['density_mg_ul']:.6f} mg/µL ({density['density_kg_m3']:.4f} kg/m³).",
+                f"Citation: {density['citation']}.",
+                f"Treating water as 1 mg/µL would bias flow by "
+                f"{density['relative_error_of_unit_density_approximation'] * 100:+.3f}% here.",
+                f"Scope: {density['scope']}",
+            ])
+        lines.extend(f"- {item}" for item in density.get("limitations", []))
     qualification = report.get("measurement_source_qualification", {"status": "not_provided"})
     lines.extend(["", "## Measurement source", "", f"Source intake status: {qualification['status']}."])
     if "source_url" in qualification:
