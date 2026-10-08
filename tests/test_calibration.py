@@ -14,6 +14,7 @@ from perfusioncal.analysis import (
     validate_uncertainty_budget,
 )
 from perfusioncal.cli import main, write_demo
+from perfusioncal.water import water_density_mg_ul
 
 
 class CalibrationTests(unittest.TestCase):
@@ -171,6 +172,33 @@ class CalibrationTests(unittest.TestCase):
         self.assertAlmostEqual(run["error_percent"], 0)
         self.assertIsNone(result["targets"][0]["mean_flow_ci95"])
         self.assertIn("unavailable (<3 runs)", markdown(result))
+
+    def test_flow_is_recovered_from_a_known_slope_at_a_computed_water_density(self):
+        density = water_density_mg_ul(20.0)
+        flow_ul_min = 40.0
+        slope_mg_s = flow_ul_min * density / 60.0
+        rng = np.random.default_rng(7)
+        rows = [[f"r{run}", t, 3.0 + slope_mg_s * t + rng.normal(0, 0.002), 40]
+                for run in range(4) for t in range(0, 121, 10)]
+        self.write_rows(rows)
+        report = analyze(self.path, density_mg_ul=density, seed=1)
+        for run in report["runs"]:
+            self.assertAlmostEqual(run["measured_flow_ul_min"], flow_ul_min, delta=0.05)
+        # An error in the density maps one-for-one into the flow: 1% density, 1% flow.
+        shifted = analyze(self.path, density_mg_ul=density * 1.01, seed=1)
+        ratio = shifted["runs"][0]["measured_flow_ul_min"] / report["runs"][0]["measured_flow_ul_min"]
+        self.assertAlmostEqual(ratio, 1 / 1.01, places=9)
+
+    def test_flagged_runs_stay_in_the_report_and_the_target_mean(self):
+        rows = [[f"good{i}", t, 2.0 * t, 60] for i in range(3) for t in range(10)]
+        rows += [["stalled", t, 5, 60] for t in range(10)]
+        self.write_rows(rows)
+        report = analyze(self.path, density_mg_ul=2, bootstrap_draws=100)
+        self.assertEqual({run["run_id"] for run in report["runs"]}, {"good0", "good1", "good2", "stalled"})
+        self.assertEqual(report["targets"][0]["n_runs"], 4)
+        self.assertEqual(report["targets"][0]["flagged_runs"], ["stalled"])
+        self.assertLess(report["targets"][0]["mean_flow_ul_min"], 60)
+        self.assertIn("stalled", markdown(report))
 
     def test_checked_in_fixture_report_identifies_the_fixture_bytes(self):
         root = Path(__file__).resolve().parents[1]
